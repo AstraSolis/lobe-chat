@@ -89,9 +89,9 @@ export default {
           title: '狼人游戏',
         },
       },
-      
+
       // 通用活动（作为后备选项）
-general: {
+      general: {
         brainstorm: {
           description: '多视角协作式创意产生和创造性问题解决',
           emoji: '🧠',
@@ -117,10 +117,9 @@ general: {
           title: '学习小组',
         },
       },
-      
-      
-// 美食研发团队专属活动
-planning: {
+
+      // 美食研发团队专属活动
+      planning: {
         cookingClass: {
           description: '学习和分享烹饪技巧、食谱和烹饪传统',
           emoji: '👨‍🍳',
@@ -146,10 +145,9 @@ planning: {
           title: '旅行规划',
         },
       },
-      
-      
-// 产品研发团队专属活动
-product: {
+
+      // 产品研发团队专属活动
+      product: {
         codeReview: {
           description: '对代码变更和实现进行技术讨论和同行评审',
           emoji: '💻',
@@ -175,11 +173,10 @@ product: {
           title: '技术交流',
         },
       },
-      
-      
-title: '群聊用法推荐',
+
+      title: '群聊用法推荐',
       // 写作圈专属活动
-writing: {
+      writing: {
         bookClub: {
           description: '对书籍、故事和文学作品进行文学讨论和分析',
           emoji: '📖',
@@ -278,19 +275,19 @@ writing: {
           {
             avatar: '🧑‍🔬',
             backgroundColor: '#FFF7E8',
-            systemRole: '你是一位玩家，擅长参与各种多人文字游戏，能够根据游戏规则进行游戏。',
+            systemRole: '你擅长参与各种多人文字游戏，能够根据游戏规则进行游戏。',
             title: '游戏玩家',
           },
           {
             avatar: '🎨',
             backgroundColor: '#F6E8FF',
-            systemRole: '你是一位玩家，擅长参与各种多人文字游戏，能够根据游戏规则进行游戏。',
+            systemRole: '你擅长参与各种多人文字游戏，能够根据游戏规则进行游戏。',
             title: '游戏玩家',
           },
           {
             avatar: '🧑‍🎨',
             backgroundColor: '#F6E8FF',
-            systemRole: '你是一位玩家，擅长参与各种多人文字游戏，能够根据游戏规则进行游戏。',
+            systemRole: '你擅长参与各种多人文字游戏，能够根据游戏规则进行游戏。',
             title: '游戏玩家',
           },
         ],
@@ -302,21 +299,19 @@ writing: {
           {
             avatar: '📋',
             backgroundColor: '#E8F5FF',
-            systemRole:
-              '你是项目经理，负责项目的整体规划、进度管控和资源协调，确保项目按时高质量完成。',
+            systemRole: '你负责项目的整体规划、进度管控和资源协调，确保项目按时高质量完成。',
             title: '厨师',
           },
           {
             avatar: '🎯',
             backgroundColor: '#FFF7E8',
-            systemRole: '你是策略负责人，专门制定长期战略规划，分析市场机会，制定目标和实现路径。',
+            systemRole: '你负责制定长期战略规划，分析市场机会，制定目标和实现路径。',
             title: '原料采购专家',
           },
           {
             avatar: '🧑‍🎨',
             backgroundColor: '#F0F8FF',
-            systemRole:
-              '你是美食研发专家，负责制定详细的执行计划，协调各部门资源，确保计划的可执行性。',
+            systemRole: '你负责制定详细的执行计划，协调各部门资源，确保计划的可执行性。',
             title: '美食研发专家',
           },
         ],
@@ -354,8 +349,7 @@ writing: {
           {
             avatar: '✍️',
             backgroundColor: '#F6E8FF',
-            systemRole:
-              '你是内容写手，擅长创作各类文体的内容，能够根据不同场景和受众调整写作风格。',
+            systemRole: '你擅长创作各类文体的内容，能够根据不同场景和受众调整写作风格。',
             title: '内容写手',
           },
           {

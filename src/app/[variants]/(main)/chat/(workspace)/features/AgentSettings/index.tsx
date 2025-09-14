@@ -146,11 +146,13 @@ const AgentSettings = memo<AgentSettingsProps>(({ agentId, onClose, open }) => {
           <Flexbox
             gap={20}
             style={{
-              minHeight: '100%',
+              height: 'calc(100vh - 28px)',
             }}
           >
             <PanelTitle desc={t('header.sessionDesc')} title={t('header.session')} />
-            <AgentCategory setTab={setTab} tab={tab} />
+            <Flexbox flex={1} width={'100%'}>
+              <AgentCategory setTab={setTab} tab={tab} />
+            </Flexbox>
             <Flexbox align={'center'} gap={8} paddingInline={8} width={'100%'}>
               <HeaderContent modal />
             </Flexbox>
