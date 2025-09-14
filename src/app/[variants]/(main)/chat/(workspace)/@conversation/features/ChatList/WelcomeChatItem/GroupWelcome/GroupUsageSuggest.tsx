@@ -4,13 +4,12 @@ import { ActionIcon, Block, Grid, Text } from '@lobehub/ui';
 import { createStyles } from 'antd-style';
 import { shuffle } from 'lodash-es';
 import { RefreshCw } from 'lucide-react';
-import { memo, useState } from 'react';
+import { memo, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Flexbox } from 'react-layout-kit';
 
-import { useChatStore } from '@/store/chat';
-
 import { useSendGroupMessage } from '../../../ChatInput/useSend';
+import { useTemplateMatching } from './useTemplateMatching';
 
 const useStyles = createStyles(({ css, token, responsive }) => ({
   card: css`
@@ -66,45 +65,53 @@ const useStyles = createStyles(({ css, token, responsive }) => ({
   `,
 }));
 
-// All available activity keys
-const allActivities = [
-  'a01',
-  'a02',
-  'a03',
-  'a04',
-  'a05',
-  'a06',
-  'a07',
-  'a08',
-  'a09',
-  'a10',
-  'a11',
-  'a12',
-  'a13',
-  'a14',
-  'a15',
-  'a16',
-  'a17',
-  'a18',
-  'a19',
-  'a20',
-];
+// Get fallback activities from general section
+const getFallbackActivities = (t: any) => {
+  const generalActivities = t('guide.groupActivities.general', { returnObjects: true }) as Record<
+    string,
+    { description: string; emoji: string; prompt: string; title: string }
+  >;
+  return generalActivities || {};
+};
 
 const GroupUsageSuggest = memo<{ mobile?: boolean }>(({ mobile }) => {
   const { t } = useTranslation('welcome');
-  const [updateInputMessage] = useChatStore((s) => [s.updateInputMessage]);
   const { styles } = useStyles();
-  const { send: sendMessage } = useSendGroupMessage();
+  const { updateInputMessage } = useSendGroupMessage();
+  const templateMatch = useTemplateMatching();
 
   const itemsPerPage = mobile ? 2 : 4;
 
-  const [shuffledActivities, setShuffledActivities] = useState(() => shuffle(allActivities));
+  // Use template-specific activities if available, otherwise use fallback
+  const availableActivities = useMemo(() => {
+    if (templateMatch?.activities && Object.keys(templateMatch.activities).length > 0) {
+      return templateMatch.activities;
+    }
+    return getFallbackActivities(t);
+  }, [templateMatch?.templateId, t]); // Use templateId instead of activities to prevent object reference issues
 
-  const displayedActivities = shuffledActivities.slice(0, itemsPerPage);
+  const activityKeys = useMemo(() => Object.keys(availableActivities), [availableActivities]);
+  const [shuffledActivityKeys, setShuffledActivityKeys] = useState<string[]>([]);
+
+  // Initialize shuffled activities only once when activityKeys change
+  useEffect(() => {
+    if (activityKeys.length > 0) {
+      setShuffledActivityKeys(shuffle([...activityKeys]));
+    }
+  }, [activityKeys]);
+
+  const displayedActivityKeys = shuffledActivityKeys.slice(0, itemsPerPage);
 
   const handleRefresh = () => {
-    setShuffledActivities(shuffle([...allActivities]));
+    if (activityKeys.length > 0) {
+      setShuffledActivityKeys(shuffle([...activityKeys]));
+    }
   };
+
+  // Don't render if no activities available or not yet initialized
+  if (!activityKeys.length || !shuffledActivityKeys.length) {
+    return null;
+  }
 
   return (
     <Flexbox gap={8} width={'100%'}>
@@ -118,10 +125,11 @@ const GroupUsageSuggest = memo<{ mobile?: boolean }>(({ mobile }) => {
         />
       </Flexbox>
       <Grid gap={8} rows={2}>
-        {displayedActivities.map((activityKey) => {
-          const title = t(`guide.groupActivities.${activityKey}.title` as any);
-          const emoji = t(`guide.groupActivities.${activityKey}.emoji` as any);
-          const description = t(`guide.groupActivities.${activityKey}.description` as any);
+        {displayedActivityKeys.map((activityKey) => {
+          const activity = availableActivities[activityKey];
+          if (!activity) return null;
+
+          const { title, emoji, description, prompt } = activity;
 
           return (
             <Block
@@ -131,9 +139,7 @@ const GroupUsageSuggest = memo<{ mobile?: boolean }>(({ mobile }) => {
               horizontal
               key={activityKey}
               onClick={() => {
-                const prompt = t(`guide.groupActivities.${activityKey}.prompt` as any);
                 updateInputMessage(prompt);
-                sendMessage({ isWelcomeQuestion: true });
               }}
               variant={'outlined'}
             >
