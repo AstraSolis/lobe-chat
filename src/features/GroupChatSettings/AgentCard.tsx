@@ -31,8 +31,9 @@ const useStyles = createStyles(({ css, token, isDarkMode }) => ({
     }
   `,
   desc: css`
-    min-height: 24px;
+    min-height: 32px;
     margin-block-end: 0 !important;
+    line-height: ${token.lineHeight};
     color: ${token.colorTextDescription};
   `,
 }));
