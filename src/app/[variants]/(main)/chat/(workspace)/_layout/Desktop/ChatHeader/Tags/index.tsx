@@ -18,7 +18,6 @@ import { authSelectors } from '@/store/user/selectors';
 import HistoryLimitTags from './HistoryLimitTags';
 import KnowledgeTag from './KnowledgeTag';
 import MemberCountTag from './MemberCountTag';
-import OrchestratorThinkingTag from './OrchestratorThinkingTag';
 import SearchTags from './SearchTags';
 
 const TitleTags = memo(() => {
@@ -43,7 +42,6 @@ const TitleTags = memo(() => {
     return (
       <Flexbox align={'center'} gap={12} horizontal>
         <MemberCountTag />
-        <OrchestratorThinkingTag />
       </Flexbox>
     );
   }

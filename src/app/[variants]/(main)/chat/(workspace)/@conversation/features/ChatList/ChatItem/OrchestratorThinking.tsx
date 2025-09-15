@@ -1,29 +1,32 @@
-import { Icon, Text } from '@lobehub/ui';
-import { LoaderCircle } from 'lucide-react';
+import { Text } from '@lobehub/ui';
+import { createStyles } from 'antd-style';
 import { memo } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Flexbox } from 'react-layout-kit';
+import { Center } from 'react-layout-kit';
 
-import { useStyles } from '@/components/FormAction';
 import { useChatStore } from '@/store/chat';
 import { chatSelectors } from '@/store/chat/selectors';
 import { useSessionStore } from '@/store/session';
+import { shinyTextStylish } from '@/styles/loading';
+
+const useStyles = createStyles(({ token }) => ({
+  shinyText: shinyTextStylish(token),
+}));
 
 const OrchestratorThinkingTag = memo(() => {
   const { t } = useTranslation('chat');
   const activeGroupId = useSessionStore((s) => s.activeId);
   const isSupervisorLoading = useChatStore(chatSelectors.isSupervisorLoading(activeGroupId || ''));
-  const { theme } = useStyles();
+  const { styles } = useStyles();
 
   if (!isSupervisorLoading) return null;
 
   return (
-    <Flexbox align={'center'} gap={4} horizontal>
-      <Icon color={theme.colorTextSecondary} icon={LoaderCircle} size={12} spin />
-      <Text fontSize={12} type={'secondary'}>
+    <Center gap={4} horizontal paddingBlock={'12px 24px'}>
+      <Text className={styles.shinyText} type={'secondary'}>
         {t('group.orchestratorThinking')}
       </Text>
-    </Flexbox>
+    </Center>
   );
 });
 

@@ -1,10 +1,10 @@
 'use client';
 
-import { ActionIcon, Avatar, GroupAvatar, List, Modal, SearchBar, Text } from '@lobehub/ui';
+import { ActionIcon, Avatar, GroupAvatar, List, Modal, Text } from '@lobehub/ui';
 import { Button, Checkbox, Empty } from 'antd';
 import { createStyles } from 'antd-style';
 import { Users, X } from 'lucide-react';
-import { type ChangeEvent, memo, useCallback, useMemo, useRef, useState } from 'react';
+import { memo, useCallback, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Flexbox } from 'react-layout-kit';
 
@@ -64,10 +64,7 @@ const useStyles = createStyles(({ css, token }) => ({
   container: css`
     display: flex;
     flex-direction: row;
-
     height: 500px;
-    border: 1px solid ${token.colorBorderSecondary};
-    border-radius: ${token.borderRadius}px;
   `,
   description: css`
     font-size: 12px;
@@ -179,8 +176,6 @@ const ChatGroupWizard = memo<ChatGroupWizardProps>(
       return { model: undefined, provider: undefined };
     }, [enabledModels]);
 
-    console.log('Default model:', defaultModel);
-
     const [isMemberSelectionOpen, setIsMemberSelectionOpen] = useState(false);
     const [searchTerm, setSearchTerm] = useState('');
     const [selectedTemplate, setSelectedTemplate] = useState<string>('');
@@ -263,10 +258,6 @@ const ChatGroupWizard = memo<ChatGroupWizardProps>(
       await onCreateCustom(selectedAgents, hostModelConfig);
     };
 
-    const handleSearchChange = useCallback((e: ChangeEvent<HTMLInputElement>) => {
-      setSearchTerm(e.target.value);
-    }, []);
-
     // Filter templates based on search term
     const filteredTemplates = useMemo(() => {
       if (!searchTerm.trim()) return groupTemplates;
@@ -334,14 +325,6 @@ const ChatGroupWizard = memo<ChatGroupWizardProps>(
           <Flexbox className={styles.container} horizontal>
             {/* Left Column - Templates */}
             <Flexbox className={styles.leftColumn} flex={1} gap={12}>
-              <SearchBar
-                allowClear
-                onChange={handleSearchChange}
-                placeholder={t('groupWizard.searchTemplates')}
-                value={searchTerm}
-                variant="filled"
-              />
-
               <Flexbox flex={1} style={{ overflowY: 'auto' }}>
                 {filteredTemplates.length === 0 ? (
                   <Empty
