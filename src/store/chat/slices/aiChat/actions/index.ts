@@ -6,12 +6,14 @@ import { AIGenerateAction, generateAIChat } from './generateAIChat';
 import { AIGenerateV2Action, generateAIChatV2 } from './generateAIChatV2';
 import { ChatMemoryAction, chatMemory } from './memory';
 import { ChatRAGAction, chatRag } from './rag';
+import { AgentAction, agentSlice } from './runAgent';
 
 export interface ChatAIChatAction
   extends ChatRAGAction,
     ChatMemoryAction,
     AIGenerateAction,
-    AIGenerateV2Action {
+    AIGenerateV2Action,
+    AgentAction {
   /**/
 }
 
@@ -25,4 +27,5 @@ export const chatAiChat: StateCreator<
   ...generateAIChat(...params),
   ...chatMemory(...params),
   ...generateAIChatV2(...params),
+  ...agentSlice(...params),
 });
