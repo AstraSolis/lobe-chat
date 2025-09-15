@@ -1,15 +1,15 @@
 /* eslint-disable sort-keys-fix/sort-keys-fix, typescript-sort-keys/interface */
 // Disable the auto sort key eslint rule to make the code more logic and readable
-import { produce } from 'immer';
-import { StateCreator } from 'zustand/vanilla';
-
-import { LOADING_FLAT } from '@/const/message';
 import {
   GroupMemberInfo,
   buildAgentResponsePrompt,
   buildGroupChatSystemPrompt,
   filterMessagesForAgent,
-} from '@/prompts/groupChat';
+} from '@lobechat/prompts';
+import { produce } from 'immer';
+import { StateCreator } from 'zustand/vanilla';
+
+import { LOADING_FLAT } from '@/const/message';
 import { ChatStore } from '@/store/chat/store';
 import { messageMapKey } from '@/store/chat/utils/messageMapKey';
 import { chatGroupSelectors } from '@/store/chatGroup/selectors';

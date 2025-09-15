@@ -1,4 +1,4 @@
-import { groupSupervisorPrompts } from '@lobechat/prompts';
+import { GroupMemberInfo, groupChatPrompts, groupSupervisorPrompts } from '@lobechat/prompts';
 import { Tooltip } from '@lobehub/ui';
 import { TokenTag } from '@lobehub/ui/chat';
 import { useTheme } from 'antd-style';
@@ -10,7 +10,6 @@ import { Center, Flexbox } from 'react-layout-kit';
 import { useModelContextWindowTokens } from '@/hooks/useModelContextWindowTokens';
 import { useModelSupportToolUse } from '@/hooks/useModelSupportToolUse';
 import { useTokenCount } from '@/hooks/useTokenCount';
-import { GroupMemberInfo, groupChatPrompts } from '@/prompts/groupChat';
 import { useAgentStore } from '@/store/agent';
 import { agentSelectors } from '@/store/agent/selectors';
 import { useChatStore } from '@/store/chat';

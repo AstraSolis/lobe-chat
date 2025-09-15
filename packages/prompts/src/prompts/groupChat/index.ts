@@ -1,4 +1,4 @@
-import { ChatMessage } from '@/types/message';
+import { ChatMessage } from '@/types/index';
 
 export interface GroupMemberInfo {
   id: string;
@@ -143,7 +143,7 @@ ${dmRules}
 ${naturalFlowRule}
 - Return ONLY a JSON array of objects, nothing else
 
-Examples: 
+Examples:
 ${dmExamples}
 - Stop conversation: []
 
@@ -174,67 +174,4 @@ export const groupChatPrompts = {
   buildAgentResponsePrompt,
   buildGroupChatSystemPrompt,
   buildSupervisorPrompt,
-};
-
-export const filterMessagesForAgent = (messages: ChatMessage[], agentId: string): ChatMessage[] => {
-  return messages
-    .filter((message) => {
-      // Exclude supervisor messages (messages with agentId="supervisor")
-      if (message.agentId === 'supervisor') {
-        return false;
-      }
-      return true;
-    })
-    .map((message) => {
-      // Always include system messages as-is
-      if (message.role === 'system') {
-        return message;
-      }
-
-      // For user messages, check DM targeting rules
-      if (message.role === 'user') {
-        // If no target specified, it's a group message - include it as-is
-        if (!message.targetId) {
-          return message;
-        }
-
-        // If the message is targeted to this agent, include it as-is
-        if (message.targetId === agentId) {
-          return message;
-        }
-
-        // Otherwise, it's a DM to another agent - replace content with "***"
-        return {
-          ...message,
-          content: '***',
-        };
-      }
-
-      // For assistant messages, check DM targeting rules
-      if (message.role === 'assistant') {
-        // If no target specified, it's a group message - include it as-is
-        if (!message.targetId) {
-          return message;
-        }
-
-        // If the agent is the target of the DM, include it as-is
-        if (message.targetId === agentId) {
-          return message;
-        }
-
-        // If the agent sent the message, include it as-is
-        if (message.agentId === agentId) {
-          return message;
-        }
-
-        // Otherwise, it's a DM not involving this agent - replace content with "***"
-        return {
-          ...message,
-          content: '***',
-        };
-      }
-
-      // Default: include the message as-is
-      return message;
-    });
 };

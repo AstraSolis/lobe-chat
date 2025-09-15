@@ -1,12 +1,9 @@
 import { describe, expect, it } from 'vitest';
 
-import type { ChatMessage } from '@/types/message';
+import type { ChatMessage } from '@/types/index';
 
-import {
-  buildAgentResponsePrompt,
-  buildGroupChatSystemPrompt,
-  filterMessagesForAgent,
-} from './index';
+import { filterMessagesForAgent } from '../chatMessages';
+import { buildAgentResponsePrompt, buildGroupChatSystemPrompt } from './index';
 
 describe('buildGroupChatSystemPrompt', () => {
   const baseSystemRole = 'You are an expert collaborator.';

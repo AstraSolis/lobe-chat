@@ -1,9 +1,7 @@
-import { groupSupervisorPrompts } from '@lobechat/prompts';
+import { groupChatPrompts, groupSupervisorPrompts } from '@lobechat/prompts';
+import { ChatMessage, GroupMemberWithAgent } from '@lobechat/types';
 
-import { groupChatPrompts } from '@/prompts/groupChat';
 import { chatService } from '@/services/chat';
-import { ChatMessage } from '@/types/message';
-import { GroupMemberWithAgent } from '@/types/session';
 
 export interface SupervisorDecision {
   id: string;
