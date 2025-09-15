@@ -58,11 +58,13 @@ const GroupChatSettings = memo(() => {
           <Flexbox
             gap={20}
             style={{
-              minHeight: '100%',
+              height: 'calc(100vh - 28px)',
             }}
           >
             <PanelTitle desc={t('header.groupDesc')} title={t('header.group')} />
-            <GroupCategory setTab={setTab} tab={tab} />
+            <Flexbox flex={1} width={'100%'}>
+              <GroupCategory setTab={setTab} tab={tab} />
+            </Flexbox>
             <BrandWatermark paddingInline={12} />
           </Flexbox>
         }
