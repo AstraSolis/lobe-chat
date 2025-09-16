@@ -10,21 +10,6 @@ import {
  */
 export interface QueueServiceImpl {
   /**
-   * Schedule next Agent execution step
-   */
-  scheduleNextStep(params: ScheduleStepParams): Promise<string>;
-
-  /**
-   * High priority execution (immediate resume after human intervention)
-   */
-  scheduleImmediateStep(params: HumanInterventionParams): Promise<string>;
-
-  /**
-   * Batch schedule multiple steps (for resuming interrupted sessions)
-   */
-  scheduleBatchSteps(sessions: ScheduleStepParams[]): Promise<string[]>;
-
-  /**
    * Cancel scheduled task
    */
   cancelScheduledTask(taskId: string): Promise<void>;
@@ -38,4 +23,19 @@ export interface QueueServiceImpl {
    * Health check
    */
   healthCheck(): Promise<HealthCheckResult>;
+
+  /**
+   * Batch schedule multiple steps (for resuming interrupted sessions)
+   */
+  scheduleBatchSteps(sessions: ScheduleStepParams[]): Promise<string[]>;
+
+  /**
+   * High priority execution (immediate resume after human intervention)
+   */
+  scheduleImmediateStep(params: HumanInterventionParams): Promise<string>;
+
+  /**
+   * Schedule next Agent execution step
+   */
+  scheduleNextStep(params: ScheduleStepParams): Promise<string>;
 }

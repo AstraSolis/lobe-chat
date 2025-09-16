@@ -23,7 +23,10 @@ export class QStashQueueServiceImpl implements QueueServiceImpl {
       throw new Error('QStash token is required for queue service');
     }
 
-    this.qstashClient = new Client({ token: config.qstashToken });
+    this.qstashClient = new Client({
+      token: config.qstashToken,
+      ...(config.publishUrl && { publishUrl: config.publishUrl }),
+    });
     this.endpoint = config.endpoint;
 
     log('Initialized with endpoint: %s', this.endpoint);
@@ -64,10 +67,10 @@ export class QStashQueueServiceImpl implements QueueServiceImpl {
         stepIndex,
         sessionId,
         delay,
-        response.messageId,
+        'messageId' in response ? response.messageId : 'batch-message',
       );
 
-      return response.messageId;
+      return 'messageId' in response ? response.messageId : `scheduled-${Date.now()}`;
     } catch (error) {
       log('Failed to schedule step %d for session %s: %O', stepIndex, sessionId, error);
       throw error;
@@ -109,10 +112,10 @@ export class QStashQueueServiceImpl implements QueueServiceImpl {
         'Scheduled immediate step %d for session %s after human intervention (messageId: %s)',
         stepIndex,
         sessionId,
-        response.messageId,
+        'messageId' in response ? response.messageId : 'immediate-message',
       );
 
-      return response.messageId;
+      return 'messageId' in response ? response.messageId : `scheduled-${Date.now()}`;
     } catch (error) {
       log('Failed to schedule immediate step %d for session %s: %O', stepIndex, sessionId, error);
       throw error;
@@ -120,13 +123,9 @@ export class QStashQueueServiceImpl implements QueueServiceImpl {
   }
 
   async scheduleBatchSteps(sessions: ScheduleStepParams[]): Promise<string[]> {
-    const messageIds: string[] = [];
-
     try {
-      for (const params of sessions) {
-        const messageId = await this.scheduleNextStep(params);
-        messageIds.push(messageId);
-      }
+      // Use Promise.all for concurrent execution
+      const messageIds = await Promise.all(sessions.map((params) => this.scheduleNextStep(params)));
 
       log('Scheduled %d batch steps', sessions.length);
       return messageIds;
@@ -151,8 +150,6 @@ export class QStashQueueServiceImpl implements QueueServiceImpl {
   }
 
   async getQueueStats(): Promise<QueueStats> {
-    // QStash doesn't have direct API to get queue statistics
-    // Return mock data here, can be implemented via Redis counters in practice
     return {
       completedCount: 0,
       failedCount: 0,
@@ -169,20 +166,34 @@ export class QStashQueueServiceImpl implements QueueServiceImpl {
           timestamp: Date.now(),
           type: 'health_check',
         },
-        delay: '1s',
+        delay: 1000,
         retries: 1,
-        url: `${this.endpoint.replace('/execute-step', '/health')}`,
+        url: this.getHealthCheckEndpoint(),
       });
 
       return {
         healthy: true,
-        message: `Queue service healthy, test message: ${testResponse.messageId}`,
+        message: `Queue service healthy, test message: ${'messageId' in testResponse ? testResponse.messageId : 'health-check'}`,
       };
     } catch (error) {
       return {
         healthy: false,
         message: `Queue service unhealthy: ${(error as Error).message}`,
       };
+    }
+  }
+
+  /**
+   * Generate health check endpoint from main endpoint
+   */
+  private getHealthCheckEndpoint(): string {
+    try {
+      const url = new URL(this.endpoint);
+      url.pathname = url.pathname.replace(/\/[^/]*$/, '/health');
+      return url.toString();
+    } catch {
+      // Fallback to simple string replacement
+      return this.endpoint.replace(/\/[^/]*$/, '/health');
     }
   }
 }

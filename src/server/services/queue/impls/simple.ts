@@ -25,14 +25,14 @@ export class SimpleQueueServiceImpl implements QueueServiceImpl {
       try {
         // Directly call execution endpoint
         const response = await fetch(process.env.AGENT_STEP_ENDPOINT!, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
+            context,
             sessionId,
             stepIndex,
-            context,
             timestamp: Date.now(),
           }),
+          headers: { 'Content-Type': 'application/json' },
+          method: 'POST',
         });
 
         if (!response.ok) {
@@ -86,10 +86,10 @@ export class SimpleQueueServiceImpl implements QueueServiceImpl {
 
   async getQueueStats(): Promise<QueueStats> {
     return {
-      pendingCount: this.timeouts.size,
-      processingCount: 0,
       completedCount: 0,
       failedCount: 0,
+      pendingCount: this.timeouts.size,
+      processingCount: 0,
     };
   }
 
