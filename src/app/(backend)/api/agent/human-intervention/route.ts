@@ -21,52 +21,74 @@ export async function POST(request: NextRequest) {
     }
 
     if (!action) {
-      return NextResponse.json({
-        error: 'action is required (approve, reject, input, select)',
-      }, { status: 400 });
+      return NextResponse.json(
+        {
+          error: 'action is required (approve, reject, input, select)',
+        },
+        { status: 400 },
+      );
     }
 
     log(`Processing ${action} for session ${sessionId}`);
 
     // 构建干预参数
     let interventionParams: any = {
-      sessionId,
-      stepIndex: 0, // 会从状态管理器获取
+      // 会从状态管理器获取
       action,
+
+      sessionId,
+      stepIndex: 0,
     };
 
     switch (action) {
-      case 'approve':
+      case 'approve': {
         if (!data?.approvedToolCall) {
-          return NextResponse.json({
-            error: 'approvedToolCall is required for approve action',
-          }, { status: 400 });
+          return NextResponse.json(
+            {
+              error: 'approvedToolCall is required for approve action',
+            },
+            { status: 400 },
+          );
         }
         interventionParams.approvedToolCall = data.approvedToolCall;
         break;
-      case 'reject':
+      }
+      case 'reject': {
         interventionParams.rejectionReason = reason || 'Tool call rejected by user';
         break;
-      case 'input':
+      }
+      case 'input': {
         if (!data?.input) {
-          return NextResponse.json({
-            error: 'input is required for input action',
-          }, { status: 400 });
+          return NextResponse.json(
+            {
+              error: 'input is required for input action',
+            },
+            { status: 400 },
+          );
         }
         interventionParams.humanInput = { response: data.input };
         break;
-      case 'select':
+      }
+      case 'select': {
         if (!data?.selection) {
-          return NextResponse.json({
-            error: 'selection is required for select action',
-          }, { status: 400 });
+          return NextResponse.json(
+            {
+              error: 'selection is required for select action',
+            },
+            { status: 400 },
+          );
         }
         interventionParams.humanInput = { selection: data.selection };
         break;
-      default:
-        return NextResponse.json({
-          error: `Unknown action: ${action}. Supported actions: approve, reject, input, select`,
-        }, { status: 400 });
+      }
+      default: {
+        return NextResponse.json(
+          {
+            error: `Unknown action: ${action}. Supported actions: approve, reject, input, select`,
+          },
+          { status: 400 },
+        );
+      }
     }
 
     // 使用 AgentRuntimeService 处理人工干预
@@ -80,14 +102,16 @@ export async function POST(request: NextRequest) {
       success: true,
       timestamp: new Date().toISOString(),
     });
-
   } catch (error: any) {
     log('Error processing intervention: %O', error);
 
-    return NextResponse.json({
-      error: error.message,
-      timestamp: new Date().toISOString(),
-    }, { status: 500 });
+    return NextResponse.json(
+      {
+        error: error.message,
+        timestamp: new Date().toISOString(),
+      },
+      { status: 500 },
+    );
   }
 }
 
@@ -101,26 +125,32 @@ export async function GET(request: NextRequest) {
     const userId = searchParams.get('userId');
 
     if (!sessionId && !userId) {
-      return NextResponse.json({
-        error: 'Either sessionId or userId parameter is required',
-      }, { status: 400 });
+      return NextResponse.json(
+        {
+          error: 'Either sessionId or userId parameter is required',
+        },
+        { status: 400 },
+      );
     }
 
-    // TODO: 实现通过 AgentRuntimeService 获取待处理的人工干预列表
-    // 这个功能需要在 AgentRuntimeService 中实现
-    return NextResponse.json({
-      pendingInterventions: [],
-      timestamp: new Date().toISOString(),
-      totalCount: 0,
-      message: 'Feature not yet implemented in AgentRuntimeService',
+    log('Getting pending interventions for sessionId: %s, userId: %s', sessionId, userId);
+
+    // 使用 AgentRuntimeService 获取待处理的人工干预列表
+    const result = await agentRuntimeService.getPendingInterventions({
+      sessionId: sessionId || undefined,
+      userId: userId || undefined,
     });
 
+    return NextResponse.json(result);
   } catch (error: any) {
     log('Error getting pending interventions: %O', error);
 
-    return NextResponse.json({
-      error: error.message,
-      timestamp: new Date().toISOString(),
-    }, { status: 500 });
+    return NextResponse.json(
+      {
+        error: error.message,
+        timestamp: new Date().toISOString(),
+      },
+      { status: 500 },
+    );
   }
 }

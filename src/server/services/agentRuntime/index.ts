@@ -1,4 +1,4 @@
-import { AgentRuntime, RuntimeContext } from '@lobechat/agent-runtime';
+import { AgentRuntime } from '@lobechat/agent-runtime';
 import debug from 'debug';
 
 import {
@@ -12,37 +12,26 @@ import {
 } from '@/server/modules/AgentRuntime';
 import { QueueService } from '@/server/services/queue';
 
+import type {
+  AgentExecutionParams,
+  AgentExecutionResult,
+  PendingInterventionsResult,
+  SessionCreationParams,
+  SessionCreationResult,
+  SessionStatusResult,
+} from './types';
+
 const log = debug('agent-runtime-service');
 
-export interface AgentExecutionParams {
-  approvedToolCall?: any;
-  context?: RuntimeContext;
-  humanInput?: any;
-  rejectionReason?: string;
-  sessionId: string;
-  stepIndex: number;
-}
-
-export interface AgentExecutionResult {
-  nextStepScheduled: boolean;
-  state: any;
-  stepResult?: any;
-  success: boolean;
-}
-
-export interface SessionCreationParams {
-  agentConfig?: any;
-  initialContext: RuntimeContext;
-  modelConfig?: any;
-  sessionId: string;
-  userId?: string;
-}
-
-export interface SessionCreationResult {
-  messageId: string;
-  sessionId: string;
-  success: boolean;
-}
+// Re-export types for convenience
+export type {
+  AgentExecutionParams,
+  AgentExecutionResult,
+  PendingInterventionsResult,
+  SessionCreationParams,
+  SessionCreationResult,
+  SessionStatusResult,
+};
 
 /**
  * Agent Runtime Service
@@ -143,7 +132,7 @@ export class AgentRuntimeService {
       }
 
       // 创建 Agent 和 Runtime 实例
-      const { agent, runtime } = this.createAgentRuntime(sessionId, sessionMetadata);
+      const { runtime } = this.createAgentRuntime(sessionId, sessionMetadata);
 
       // 处理人工干预
       let currentContext = context;
@@ -227,6 +216,186 @@ export class AgentRuntimeService {
         type: 'error',
       });
 
+      throw error;
+    }
+  }
+
+  /**
+   * 获取会话状态
+   */
+  async getSessionStatus(params: {
+    sessionId: string;
+    includeHistory?: boolean;
+    historyLimit?: number;
+  }): Promise<SessionStatusResult> {
+    const { sessionId, includeHistory = false, historyLimit = 10 } = params;
+
+    try {
+      log('Getting session status for %s', sessionId);
+
+      // 获取当前状态和元数据
+      const [currentState, sessionMetadata] = await Promise.all([
+        this.stateManager.loadAgentState(sessionId),
+        this.stateManager.getSessionMetadata(sessionId),
+      ]);
+
+      if (!currentState || !sessionMetadata) {
+        throw new Error('Session not found');
+      }
+
+      // 获取执行历史（如果需要）
+      let executionHistory;
+      if (includeHistory) {
+        try {
+          executionHistory = await this.stateManager.getExecutionHistory(sessionId, historyLimit);
+        } catch (error) {
+          log('Failed to load execution history: %O', error);
+          executionHistory = [];
+        }
+      }
+
+      // 获取最近的流式事件（用于调试）
+      let recentEvents;
+      if (includeHistory) {
+        try {
+          recentEvents = await this.streamManager.getStreamHistory(sessionId, 20);
+        } catch (error) {
+          log('Failed to load recent events: %O', error);
+          recentEvents = [];
+        }
+      }
+
+      // 计算会话统计信息
+      const stats = {
+        lastActiveTime: sessionMetadata.lastActiveAt
+          ? Date.now() - new Date(sessionMetadata.lastActiveAt).getTime()
+          : 0,
+        totalCost: currentState.cost?.total || 0,
+        totalEvents: currentState.events?.length || 0,
+        totalMessages: currentState.messages?.length || 0,
+        totalSteps: currentState.stepCount || 0,
+        uptime: sessionMetadata.createdAt
+          ? Date.now() - new Date(sessionMetadata.createdAt).getTime()
+          : 0,
+      };
+
+      return {
+        currentState: {
+          cost: currentState.cost,
+          costLimit: currentState.costLimit,
+          error: currentState.error,
+          interruption: currentState.interruption,
+          lastModified: currentState.lastModified,
+          maxSteps: currentState.maxSteps,
+          pendingHumanPrompt: currentState.pendingHumanPrompt,
+          pendingHumanSelect: currentState.pendingHumanSelect,
+          pendingToolsCalling: currentState.pendingToolsCalling,
+          status: currentState.status,
+          stepCount: currentState.stepCount,
+          usage: currentState.usage,
+        },
+        executionHistory: executionHistory?.slice(0, historyLimit),
+        hasError: currentState.status === 'error',
+        isActive: ['running', 'waiting_for_human_input'].includes(currentState.status),
+        isCompleted: currentState.status === 'done',
+        metadata: sessionMetadata,
+        needsHumanInput: currentState.status === 'waiting_for_human_input',
+        recentEvents: recentEvents?.slice(0, 10),
+        sessionId,
+        stats,
+      };
+    } catch (error) {
+      log('Failed to get session status for %s: %O', sessionId, error);
+      throw error;
+    }
+  }
+
+  /**
+   * 获取待处理的人工干预列表
+   */
+  async getPendingInterventions(params: {
+    sessionId?: string;
+    userId?: string;
+  }): Promise<PendingInterventionsResult> {
+    const { sessionId, userId } = params;
+
+    try {
+      log('Getting pending interventions for sessionId: %s, userId: %s', sessionId, userId);
+
+      let sessions: string[] = [];
+
+      if (sessionId) {
+        sessions = [sessionId];
+      } else if (userId) {
+        // 获取用户的所有活跃会话
+        try {
+          const activeSessions = await this.stateManager.getActiveSessions();
+          
+          // 过滤出属于该用户的会话
+          const userSessions = [];
+          for (const session of activeSessions) {
+            try {
+              const metadata = await this.stateManager.getSessionMetadata(session);
+              if (metadata?.userId === userId) {
+                userSessions.push(session);
+              }
+            } catch (error) {
+              log('Failed to get metadata for session %s: %O', session, error);
+            }
+          }
+          sessions = userSessions;
+        } catch (error) {
+          log('Failed to get active sessions: %O', error);
+          sessions = [];
+        }
+      }
+
+      // 检查每个会话的状态
+      const pendingInterventions = [];
+
+      for (const session of sessions) {
+        try {
+          const [state, metadata] = await Promise.all([
+            this.stateManager.loadAgentState(session),
+            this.stateManager.getSessionMetadata(session),
+          ]);
+
+          if (state?.status === 'waiting_for_human_input') {
+            const intervention: any = {
+              lastModified: state.lastModified,
+              modelConfig: metadata?.modelConfig,
+              sessionId: session,
+              status: state.status,
+              stepCount: state.stepCount,
+              userId: metadata?.userId,
+            };
+
+            // 添加具体的待处理内容
+            if (state.pendingToolsCalling) {
+              intervention.type = 'tool_approval';
+              intervention.pendingToolsCalling = state.pendingToolsCalling;
+            } else if (state.pendingHumanPrompt) {
+              intervention.type = 'human_prompt';
+              intervention.pendingHumanPrompt = state.pendingHumanPrompt;
+            } else if (state.pendingHumanSelect) {
+              intervention.type = 'human_select';
+              intervention.pendingHumanSelect = state.pendingHumanSelect;
+            }
+
+            pendingInterventions.push(intervention);
+          }
+        } catch (error) {
+          log('Failed to get state for session %s: %O', session, error);
+        }
+      }
+
+      return {
+        pendingInterventions,
+        timestamp: new Date().toISOString(),
+        totalCount: pendingInterventions.length,
+      };
+    } catch (error) {
+      log('Failed to get pending interventions: %O', error);
       throw error;
     }
   }

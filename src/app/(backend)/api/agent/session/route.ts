@@ -104,16 +104,23 @@ export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
     const sessionId = searchParams.get('sessionId');
+    const includeHistory = searchParams.get('includeHistory') === 'true';
+    const historyLimit = parseInt(searchParams.get('historyLimit') || '10', 10);
 
     if (!sessionId) {
       return NextResponse.json({ error: 'sessionId parameter is required' }, { status: 400 });
     }
 
-    // TODO: 实现通过 AgentRuntimeService 获取会话状态
-    return NextResponse.json({
-      message: 'Session status endpoint not yet implemented with AgentRuntimeService',
+    log('Getting session status for %s', sessionId);
+
+    // 使用 AgentRuntimeService 获取会话状态
+    const sessionStatus = await agentRuntimeService.getSessionStatus({
+      historyLimit,
+      includeHistory,
       sessionId,
     });
+
+    return NextResponse.json(sessionStatus);
   } catch (error: any) {
     log('Error getting session status: %O', error);
 
