@@ -1,17 +1,16 @@
+import debug from 'debug';
 import { NextRequest, NextResponse } from 'next/server';
-import { StreamEventManager } from '@/server/services/agent/StreamEventManager';
 
-// 初始化流式事件管理器
-const streamManager = new StreamEventManager({
-  host: process.env.REDIS_HOST,
-  port: process.env.REDIS_PORT ? parseInt(process.env.REDIS_PORT) : 6379,
-  password: process.env.REDIS_PASSWORD,
-  db: process.env.REDIS_DB ? parseInt(process.env.REDIS_DB) : 0,
-});
+import { StreamEventManager } from '@/server/modules/AgentRuntime/StreamEventManager';
+
+const log = debug('agent:stream');
+
+// Initialize stream event manager
+const streamManager = new StreamEventManager();
 
 /**
- * Server-Sent Events (SSE) 端点
- * 为客户端提供实时的 Agent 执行事件流
+ * Server-Sent Events (SSE) endpoint
+ * Provides real-time Agent execution event stream for clients
  */
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
@@ -20,66 +19,81 @@ export async function GET(request: NextRequest) {
   const includeHistory = searchParams.get('includeHistory') === 'true';
 
   if (!sessionId) {
-    return NextResponse.json({
-      error: 'sessionId parameter is required'
-    }, { status: 400 });
+    return NextResponse.json(
+      {
+        error: 'sessionId parameter is required',
+      },
+      { status: 400 },
+    );
   }
 
-  console.log(`[Agent Stream] Starting SSE connection for session ${sessionId} from eventId ${lastEventId}`);
+  log(`Starting SSE connection for session ${sessionId} from eventId ${lastEventId}`);
 
   // 创建 Server-Sent Events 流
   const stream = new ReadableStream({
+    cancel(reason) {
+      log(`SSE connection cancelled for session ${sessionId}:`, reason);
+
+      // Call cleanup function
+      if ((this as any)._cleanup) {
+        (this as any)._cleanup();
+      }
+    },
+
     start(controller) {
       // 发送连接确认事件
       const connectEvent = {
-        type: 'connected',
+        lastEventId,
         sessionId,
         timestamp: Date.now(),
-        lastEventId,
+        type: 'connected',
       };
 
       controller.enqueue(`data: ${JSON.stringify(connectEvent)}\n\n`);
-      console.log(`[Agent Stream] SSE connection established for session ${sessionId}`);
+      log(`SSE connection established for session ${sessionId}`);
 
       // 如果需要，先发送历史事件
       if (includeHistory) {
-        streamManager.getStreamHistory(sessionId, 50).then(history => {
-          // 按时间顺序发送历史事件（最早的在前面）
-          const sortedHistory = history.reverse();
+        streamManager
+          .getStreamHistory(sessionId, 50)
+          .then((history) => {
+            // 按时间顺序发送历史事件（最早的在前面）
+            const sortedHistory = history.reverse();
 
-          sortedHistory.forEach(event => {
-            // 只发送比 lastEventId 更新的事件
-            if (!lastEventId || lastEventId === '0' || event.timestamp.toString() > lastEventId) {
-              try {
-                controller.enqueue(`data: ${JSON.stringify(event)}\n\n`);
-              } catch (error) {
-                console.error('[Agent Stream] Error sending history event:', error);
+            sortedHistory.forEach((event) => {
+              // 只发送比 lastEventId 更新的事件
+              if (!lastEventId || lastEventId === '0' || event.timestamp.toString() > lastEventId) {
+                try {
+                  controller.enqueue(`data: ${JSON.stringify(event)}\n\n`);
+                } catch (error) {
+                  console.error('[Agent Stream] Error sending history event:', error);
+                }
               }
+            });
+
+            if (sortedHistory.length > 0) {
+              log(`Sent ${sortedHistory.length} historical events for session ${sessionId}`);
+            }
+          })
+          .catch((error) => {
+            console.error('[Agent Stream] Failed to load history:', error);
+
+            const errorEvent = {
+              data: {
+                error: error.message,
+                phase: 'history_loading',
+              },
+              sessionId,
+              timestamp: Date.now(),
+              type: 'error',
+            };
+
+            try {
+              controller.enqueue(`data: ${JSON.stringify(errorEvent)}\n\n`);
+            } catch (controllerError) {
+              console.error('[Agent Stream] Failed to send error event:', controllerError);
             }
           });
-
-          if (sortedHistory.length > 0) {
-            console.log(`[Agent Stream] Sent ${sortedHistory.length} historical events for session ${sessionId}`);
-          }
-        }).catch(error => {
-          console.error('[Agent Stream] Failed to load history:', error);
-
-          const errorEvent = {
-            type: 'error',
-            sessionId,
-            timestamp: Date.now(),
-            data: {
-              phase: 'history_loading',
-              error: error.message,
-            }
-          };
-
-          try {
-            controller.enqueue(`data: ${JSON.stringify(errorEvent)}\n\n`);
-          } catch (controllerError) {
-            console.error('[Agent Stream] Failed to send error event:', controllerError);
-          }
-        });
       }
 
       // 创建 AbortController 用于取消订阅
@@ -92,13 +106,13 @@ export async function GET(request: NextRequest) {
             sessionId,
             lastEventId,
             (events) => {
-              events.forEach(event => {
+              events.forEach((event) => {
                 try {
                   // 添加 SSE 特定的字段
                   const sseEvent = {
                     ...event,
-                    timestamp: event.timestamp || Date.now(),
                     sessionId,
+                    timestamp: event.timestamp || Date.now(),
                   };
 
                   controller.enqueue(`data: ${JSON.stringify(sseEvent)}\n\n`);
@@ -107,20 +121,20 @@ export async function GET(request: NextRequest) {
                 }
               });
             },
-            abortController.signal
+            abortController.signal,
           );
         } catch (error) {
           if (!abortController.signal.aborted) {
             console.error('[Agent Stream] Subscription error:', error);
 
             const errorEvent = {
-              type: 'error',
+              data: {
+                error: (error as Error).message,
+                phase: 'stream_subscription',
+              },
               sessionId,
               timestamp: Date.now(),
-              data: {
-                phase: 'stream_subscription',
-                error: (error as Error).message,
-              }
+              type: 'error',
             };
 
             try {
@@ -139,9 +153,9 @@ export async function GET(request: NextRequest) {
       const heartbeatInterval = setInterval(() => {
         try {
           const heartbeat = {
-            type: 'heartbeat',
             sessionId,
             timestamp: Date.now(),
+            type: 'heartbeat',
           };
 
           controller.enqueue(`data: ${JSON.stringify(heartbeat)}\n\n`);
@@ -149,13 +163,13 @@ export async function GET(request: NextRequest) {
           console.error('[Agent Stream] Heartbeat error:', error);
           clearInterval(heartbeatInterval);
         }
-      }, 30000);
+      }, 30_000);
 
-      // 清理函数
+      // Cleanup function
       const cleanup = () => {
         abortController.abort();
         clearInterval(heartbeatInterval);
-        console.log(`[Agent Stream] SSE connection closed for session ${sessionId}`);
+        log(`SSE connection closed for session ${sessionId}`);
       };
 
       // 监听连接关闭
@@ -164,42 +178,33 @@ export async function GET(request: NextRequest) {
       // 存储清理函数以便在 cancel 时调用
       (controller as any)._cleanup = cleanup;
     },
-
-    cancel(reason) {
-      console.log(`[Agent Stream] SSE connection cancelled for session ${sessionId}:`, reason);
-
-      // 调用清理函数
-      if ((this as any)._cleanup) {
-        (this as any)._cleanup();
-      }
-    }
   });
 
   // 设置 SSE 响应头
   return new Response(stream, {
     headers: {
-      'Content-Type': 'text/event-stream',
+      'Access-Control-Allow-Headers': 'Cache-Control, Last-Event-ID',
+      'Access-Control-Allow-Methods': 'GET',
+      'Access-Control-Allow-Origin': '*',
       'Cache-Control': 'no-cache, no-transform',
       'Connection': 'keep-alive',
-      'Access-Control-Allow-Origin': '*',
-      'Access-Control-Allow-Methods': 'GET',
-      'Access-Control-Allow-Headers': 'Cache-Control, Last-Event-ID',
+      'Content-Type': 'text/event-stream',
       'X-Accel-Buffering': 'no', // 禁用 Nginx 缓冲
     },
   });
 }
 
 /**
- * OPTIONS 请求处理（CORS 预检）
+ * OPTIONS request handler (CORS preflight)
  */
 export async function OPTIONS() {
   return new Response(null, {
-    status: 200,
     headers: {
-      'Access-Control-Allow-Origin': '*',
-      'Access-Control-Allow-Methods': 'GET, OPTIONS',
       'Access-Control-Allow-Headers': 'Cache-Control, Last-Event-ID',
+      'Access-Control-Allow-Methods': 'GET, OPTIONS',
+      'Access-Control-Allow-Origin': '*',
       'Access-Control-Max-Age': '86400',
     },
+    status: 200,
   });
 }

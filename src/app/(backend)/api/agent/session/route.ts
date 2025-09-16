@@ -1,29 +1,18 @@
-import { NextRequest, NextResponse } from 'next/server';
 import { AgentRuntime } from '@lobechat/agent-runtime';
-import { DurableLobeChatAgent } from '@/server/agents/DurableLobeChatAgent';
-import { AgentStateManager } from '@/server/services/agent/AgentStateManager';
-import { StreamEventManager } from '@/server/services/agent/StreamEventManager';
+import debug from 'debug';
+import { NextRequest, NextResponse } from 'next/server';
+
+import { AgentStateManager } from '@/server/modules/AgentRuntime/AgentStateManager';
+import { DurableLobeChatAgent } from '@/server/modules/AgentRuntime/DurableLobeChatAgent';
+import { StreamEventManager } from '@/server/modules/AgentRuntime/StreamEventManager';
 import { QueueService } from '@/server/services/queue/QueueService';
 
-// 初始化服务
-const stateManager = new AgentStateManager({
-  host: process.env.REDIS_HOST,
-  port: process.env.REDIS_PORT ? parseInt(process.env.REDIS_PORT) : 6379,
-  password: process.env.REDIS_PASSWORD,
-  db: process.env.REDIS_DB ? parseInt(process.env.REDIS_DB) : 0,
-});
+const log = debug('agent:session');
 
-const streamManager = new StreamEventManager({
-  host: process.env.REDIS_HOST,
-  port: process.env.REDIS_PORT ? parseInt(process.env.REDIS_PORT) : 6379,
-  password: process.env.REDIS_PASSWORD,
-  db: process.env.REDIS_DB ? parseInt(process.env.REDIS_DB) : 0,
-});
-
-const queueService = new QueueService({
-  qstashToken: process.env.QSTASH_TOKEN!,
-  endpoint: process.env.AGENT_STEP_ENDPOINT || `${process.env.NEXTAUTH_URL}/api/agent/execute-step`,
-});
+// Initialize services
+const stateManager = new AgentStateManager();
+const streamManager = new StreamEventManager();
+const queueService = new QueueService();
 
 /**
  * 创建新的 Agent 会话
@@ -32,6 +21,7 @@ export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
 
+    log('Creating session with body:', body);
     const {
       messages = [],
       modelConfig = {},
@@ -43,47 +33,56 @@ export async function POST(request: NextRequest) {
     } = body;
 
     // 生成会话 ID
-    const sessionId = providedSessionId || `agent_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    const sessionId =
+      providedSessionId || `agent_${Date.now()}_${Math.random().toString(36).slice(2, 11)}`;
 
-    console.log(`[Agent Session] Creating session ${sessionId} for user ${userId}`);
+    log(`Creating session ${sessionId} for user ${userId}`);
 
     // 验证必需参数
     if (!modelConfig.model || !modelConfig.provider) {
-      return NextResponse.json({
-        error: 'modelConfig.model and modelConfig.provider are required',
-      }, { status: 400 });
+      return NextResponse.json(
+        {
+          error: 'modelConfig.model and modelConfig.provider are required',
+        },
+        { status: 400 },
+      );
     }
 
     // 1. 创建 Agent 实例（用于验证配置）
     const agent = new DurableLobeChatAgent({
-      sessionId,
-      modelConfig,
       agentConfig,
+      modelConfig,
+      sessionId,
       userId,
     });
 
     // 2. 创建初始 Agent 状态
     const initialState = AgentRuntime.createInitialState({
-      sessionId,
-      messages: messages.map((m: any) => ({
-        role: m.role,
-        content: m.content,
-        tool_calls: m.tool_calls,
-        tool_call_id: m.tool_call_id,
-      })),
-      metadata: {
-        modelConfig,
-        agentConfig,
-        userId,
-        createdAt: new Date().toISOString(),
-      },
+      costLimit: agentConfig.costLimit
+        ? {
+            currency: agentConfig.costLimit.currency || 'USD',
+            maxTotalCost: agentConfig.costLimit.maxTotalCost || 10,
+            onExceeded: agentConfig.costLimit.onExceeded || 'stop',
+          }
+        : undefined,
+
       // 可选的限制配置
       maxSteps: agentConfig.maxSteps || 100,
-      costLimit: agentConfig.costLimit ? {
-        maxTotalCost: agentConfig.costLimit.maxTotalCost || 10,
-        currency: agentConfig.costLimit.currency || 'USD',
-        onExceeded: agentConfig.costLimit.onExceeded || 'stop',
-      } : undefined,
+
+      messages: messages.map((m: any) => ({
+        content: m.content,
+        role: m.role,
+        tool_call_id: m.tool_call_id,
+        tool_calls: m.tool_calls,
+      })),
+
+      metadata: {
+        agentConfig,
+        createdAt: new Date().toISOString(),
+        modelConfig,
+        userId,
+      },
+      sessionId,
     });
 
     // 3. 保存初始状态
@@ -91,83 +90,87 @@ export async function POST(request: NextRequest) {
 
     // 4. 创建会话元数据
     await stateManager.createSessionMetadata(sessionId, {
-      userId,
-      modelConfig,
       agentConfig,
+      modelConfig,
+      userId,
     });
 
-    console.log(`[Agent Session] Session ${sessionId} created successfully`);
+    log(`Session ${sessionId} created successfully`);
 
     // 5. 如果设置自动开始，触发第一步执行
     let firstStepResult;
     if (autoStart) {
       // 创建初始上下文
       const initialContext = {
-        phase: 'user_input' as const,
         payload: {
-          message: messages[messages.length - 1] || { content: '' },
           isFirstMessage: messages.length <= 1,
+          message: messages.at(-1) || { content: '' },
           sessionId,
         },
+        phase: 'user_input' as const,
         session: {
-          sessionId,
-          stepCount: 0,
-          messageCount: messages.length,
           eventCount: 0,
+          messageCount: messages.length,
+          sessionId,
           status: 'idle' as const,
-        }
+          stepCount: 0,
+        },
       };
 
       try {
         // 调度第一步执行
         const messageId = await queueService.scheduleNextStep({
+          context: initialContext,
+          delay: 500,
+          // 短延迟启动
+          priority: 'high',
+
           sessionId,
           stepIndex: 0,
-          context: initialContext,
-          delay: 500, // 短延迟启动
-          priority: 'high',
         });
 
         firstStepResult = {
-          scheduled: true,
-          messageId,
           context: initialContext,
+          messageId,
+          scheduled: true,
         };
 
-        console.log(`[Agent Session] First step scheduled for session ${sessionId} (messageId: ${messageId})`);
+        log(`First step scheduled for session ${sessionId} (messageId: ${messageId})`);
       } catch (error) {
-        console.error(`[Agent Session] Failed to schedule first step for session ${sessionId}:`, error);
+        console.error('Failed to schedule first step for session %s:', sessionId, error);
 
         firstStepResult = {
-          scheduled: false,
           error: (error as Error).message,
+          scheduled: false,
         };
       }
     }
 
     return NextResponse.json({
-      success: true,
-      sessionId,
-      status: 'created',
       autoStart,
+      createdAt: new Date().toISOString(),
+      firstStep: firstStepResult,
       initialState: {
-        status: initialState.status,
-        stepCount: initialState.stepCount,
-        messageCount: messages.length,
         costLimit: initialState.costLimit,
         maxSteps: initialState.maxSteps,
+        messageCount: messages.length,
+        status: initialState.status,
+        stepCount: initialState.stepCount,
       },
-      firstStep: firstStepResult,
-      createdAt: new Date().toISOString(),
+      sessionId,
+      status: 'created',
+      success: true,
     });
-
   } catch (error: any) {
-    console.error(`[Agent Session] Failed to create session:`, error);
+    console.error('Failed to create session:', error);
 
-    return NextResponse.json({
-      error: (error as Error).message,
-      timestamp: new Date().toISOString(),
-    }, { status: 500 });
+    return NextResponse.json(
+      {
+        error: (error as Error).message,
+        timestamp: new Date().toISOString(),
+      },
+      { status: 500 },
+    );
   }
 }
 
@@ -182,9 +185,12 @@ export async function GET(request: NextRequest) {
     const historyLimit = parseInt(searchParams.get('historyLimit') || '10');
 
     if (!sessionId) {
-      return NextResponse.json({
-        error: 'sessionId parameter is required'
-      }, { status: 400 });
+      return NextResponse.json(
+        {
+          error: 'sessionId parameter is required',
+        },
+        { status: 400 },
+      );
     }
 
     // 1. 获取当前状态
@@ -194,9 +200,12 @@ export async function GET(request: NextRequest) {
     ]);
 
     if (!currentState || !sessionMetadata) {
-      return NextResponse.json({
-        error: 'Session not found'
-      }, { status: 404 });
+      return NextResponse.json(
+        {
+          error: 'Session not found',
+        },
+        { status: 404 },
+      );
     }
 
     // 2. 获取执行历史（如果需要）
@@ -213,221 +222,256 @@ export async function GET(request: NextRequest) {
 
     // 4. 计算会话统计信息
     const stats = {
-      totalSteps: currentState.stepCount,
-      totalCost: currentState.cost?.total || 0,
-      totalMessages: currentState.messages.length,
-      totalEvents: currentState.events.length,
-      uptime: sessionMetadata.createdAt
-        ? Date.now() - new Date(sessionMetadata.createdAt).getTime()
-        : 0,
       lastActiveTime: sessionMetadata.lastActiveAt
         ? Date.now() - new Date(sessionMetadata.lastActiveAt).getTime()
+        : 0,
+      totalCost: currentState.cost?.total || 0,
+      totalEvents: currentState.events.length,
+      totalMessages: currentState.messages.length,
+      totalSteps: currentState.stepCount,
+      uptime: sessionMetadata.createdAt
+        ? Date.now() - new Date(sessionMetadata.createdAt).getTime()
         : 0,
     };
 
     return NextResponse.json({
-      sessionId,
       currentState: {
-        status: currentState.status,
-        stepCount: currentState.stepCount,
-        lastModified: currentState.lastModified,
         cost: currentState.cost,
-        usage: currentState.usage,
-        // 人工干预相关
-        pendingToolsCalling: currentState.pendingToolsCalling,
-        pendingHumanPrompt: currentState.pendingHumanPrompt,
-        pendingHumanSelect: currentState.pendingHumanSelect,
-        // 限制相关
-        maxSteps: currentState.maxSteps,
         costLimit: currentState.costLimit,
+
         // 错误信息
         error: currentState.error,
+
         interruption: currentState.interruption,
+
+        lastModified: currentState.lastModified,
+
+        // 限制相关
+        maxSteps: currentState.maxSteps,
+
+        pendingHumanPrompt: currentState.pendingHumanPrompt,
+
+        pendingHumanSelect: currentState.pendingHumanSelect,
+
+        // 人工干预相关
+        pendingToolsCalling: currentState.pendingToolsCalling,
+
+        status: currentState.status,
+
+        stepCount: currentState.stepCount,
+        usage: currentState.usage,
       },
-      metadata: sessionMetadata,
-      stats,
       // 可选的历史信息
       executionHistory: executionHistory?.slice(0, historyLimit),
-      recentEvents: recentEvents?.slice(0, 10),
+
+      hasError: currentState.status === 'error',
+
       // 状态判断
       isActive: ['running', 'waiting_for_human_input'].includes(currentState.status),
+
       isCompleted: currentState.status === 'done',
-      hasError: currentState.status === 'error',
+
+      metadata: sessionMetadata,
+
       needsHumanInput: currentState.status === 'waiting_for_human_input',
-    });
-
-  } catch (error: any) {
-    console.error(`[Agent Session] Failed to get session status:`, error);
-
-    return NextResponse.json({
-      error: (error as Error).message
-    }, { status: 500 });
-  }
-}
-
-/**
- * 更新会话配置
- */
-export async function PATCH(request: NextRequest) {
-  try {
-    const { searchParams } = new URL(request.url);
-    const sessionId = searchParams.get('sessionId');
-
-    if (!sessionId) {
-      return NextResponse.json({
-        error: 'sessionId parameter is required'
-      }, { status: 400 });
-    }
-
-    const body = await request.json();
-    const { modelConfig, agentConfig, maxSteps, costLimit } = body;
-
-    // 1. 检查会话是否存在
-    const currentState = await stateManager.loadAgentState(sessionId);
-    if (!currentState) {
-      return NextResponse.json({
-        error: 'Session not found'
-      }, { status: 404 });
-    }
-
-    // 2. 检查会话是否可以更新（运行中的会话可能不允许某些更新）
-    if (currentState.status === 'running') {
-      // 只允许更新某些非关键配置
-      const allowedUpdates = { maxSteps, costLimit };
-      const hasDisallowedUpdates = modelConfig || agentConfig;
-
-      if (hasDisallowedUpdates) {
-        return NextResponse.json({
-          error: 'Cannot update model or agent config while session is running',
-          currentStatus: currentState.status,
-        }, { status: 409 });
-      }
-    }
-
-    // 3. 更新会话状态
-    const updatedState = { ...currentState };
-
-    if (maxSteps !== undefined) {
-      updatedState.maxSteps = maxSteps;
-    }
-
-    if (costLimit !== undefined) {
-      updatedState.costLimit = costLimit;
-    }
-
-    updatedState.lastModified = new Date().toISOString();
-
-    // 4. 保存更新后的状态
-    await stateManager.saveAgentState(sessionId, updatedState);
-
-    // 5. 更新元数据
-    const sessionMetadata = await stateManager.getSessionMetadata(sessionId);
-    if (sessionMetadata) {
-      const updatedMetadata = { ...sessionMetadata };
-
-      if (modelConfig) {
-        updatedMetadata.modelConfig = { ...updatedMetadata.modelConfig, ...modelConfig };
-      }
-
-      if (agentConfig) {
-        updatedMetadata.agentConfig = { ...updatedMetadata.agentConfig, ...agentConfig };
-      }
-
-      // 重新创建元数据（因为没有直接的更新方法）
-      await stateManager.createSessionMetadata(sessionId, {
-        userId: updatedMetadata.userId,
-        modelConfig: updatedMetadata.modelConfig,
-        agentConfig: updatedMetadata.agentConfig,
-      });
-    }
-
-    console.log(`[Agent Session] Updated configuration for session ${sessionId}`);
-
-    return NextResponse.json({
-      success: true,
+      recentEvents: recentEvents?.slice(0, 10),
       sessionId,
-      updatedAt: updatedState.lastModified,
-      currentStatus: updatedState.status,
+      stats,
     });
-
   } catch (error: any) {
-    console.error(`[Agent Session] Failed to update session:`, error);
+    console.error('Failed to get session status:', error);
 
-    return NextResponse.json({
-      error: (error as Error).message
-    }, { status: 500 });
+    return NextResponse.json(
+      {
+        error: (error as Error).message,
+      },
+      { status: 500 },
+    );
   }
 }
-
-/**
- * 删除会话
- */
-export async function DELETE(request: NextRequest) {
-  try {
-    const { searchParams } = new URL(request.url);
-    const sessionId = searchParams.get('sessionId');
-
-    if (!sessionId) {
-      return NextResponse.json({
-        error: 'sessionId parameter is required'
-      }, { status: 400 });
-    }
-
-    // 1. 检查会话是否存在
-    const currentState = await stateManager.loadAgentState(sessionId);
-    if (!currentState) {
-      return NextResponse.json({
-        error: 'Session not found'
-      }, { status: 404 });
-    }
-
-    // 2. 如果会话正在运行，先中断它
-    if (currentState.status === 'running') {
-      // 这里应该取消正在进行的任务
-      // 由于 QStash 不支持直接取消，我们标记会话为中断状态
-      const interruptedState = {
-        ...currentState,
-        status: 'interrupted',
-        lastModified: new Date().toISOString(),
-        interruption: {
-          reason: 'Session deleted by user',
-          canResume: false,
-          interruptedAt: new Date().toISOString(),
-        }
-      };
-
-      await stateManager.saveAgentState(sessionId, interruptedState);
-
-      // 发布中断事件
-      await streamManager.publishStreamEvent(sessionId, {
-        type: 'error',
-        stepIndex: currentState.stepCount,
-        data: {
-          reason: 'session_deleted',
-          message: 'Session was deleted by user',
-        }
-      });
-    }
-
-    // 3. 删除所有相关数据
-    await Promise.all([
-      stateManager.deleteAgentSession(sessionId),
-      streamManager.cleanupSession(sessionId),
-    ]);
-
-    console.log(`[Agent Session] Deleted session ${sessionId}`);
-
-    return NextResponse.json({
-      success: true,
-      sessionId,
-      deletedAt: new Date().toISOString(),
-    });
-
-  } catch (error: any) {
-    console.error(`[Agent Session] Failed to delete session:`, error);
-
-    return NextResponse.json({
-      error: (error as Error).message
-    }, { status: 500 });
-  }
-}
+//
+// /**
+//  * 更新会话配置
+//  */
+// export async function PATCH(request: NextRequest) {
+//   try {
+//     const { searchParams } = new URL(request.url);
+//     const sessionId = searchParams.get('sessionId');
+//
+//     if (!sessionId) {
+//       return NextResponse.json(
+//         {
+//           error: 'sessionId parameter is required',
+//         },
+//         { status: 400 },
+//       );
+//     }
+//
+//     const body = await request.json();
+//     const { modelConfig, agentConfig, maxSteps, costLimit } = body;
+//
+//     // 1. 检查会话是否存在
+//     const currentState = await stateManager.loadAgentState(sessionId);
+//     if (!currentState) {
+//       return NextResponse.json(
+//         {
+//           error: 'Session not found',
+//         },
+//         { status: 404 },
+//       );
+//     }
+//
+//     // 2. 检查会话是否可以更新（运行中的会话可能不允许某些更新）
+//     if (currentState.status === 'running') {
+//       // 只允许更新某些非关键配置
+//       const allowedUpdates = { costLimit, maxSteps };
+//       const hasDisallowedUpdates = modelConfig || agentConfig;
+//
+//       if (hasDisallowedUpdates) {
+//         return NextResponse.json(
+//           {
+//             currentStatus: currentState.status,
+//             error: 'Cannot update model or agent config while session is running',
+//           },
+//           { status: 409 },
+//         );
+//       }
+//     }
+//
+//     // 3. 更新会话状态
+//     const updatedState = { ...currentState };
+//
+//     if (maxSteps !== undefined) {
+//       updatedState.maxSteps = maxSteps;
+//     }
+//
+//     if (costLimit !== undefined) {
+//       updatedState.costLimit = costLimit;
+//     }
+//
+//     updatedState.lastModified = new Date().toISOString();
+//
+//     // 4. 保存更新后的状态
+//     await stateManager.saveAgentState(sessionId, updatedState);
+//
+//     // 5. 更新元数据
+//     const sessionMetadata = await stateManager.getSessionMetadata(sessionId);
+//     if (sessionMetadata) {
+//       const updatedMetadata = { ...sessionMetadata };
+//
+//       if (modelConfig) {
+//         updatedMetadata.modelConfig = { ...updatedMetadata.modelConfig, ...modelConfig };
+//       }
+//
+//       if (agentConfig) {
+//         updatedMetadata.agentConfig = { ...updatedMetadata.agentConfig, ...agentConfig };
+//       }
+//
+//       // 重新创建元数据（因为没有直接的更新方法）
+//       await stateManager.createSessionMetadata(sessionId, {
+//         agentConfig: updatedMetadata.agentConfig,
+//         modelConfig: updatedMetadata.modelConfig,
+//         userId: updatedMetadata.userId,
+//       });
+//     }
+//
+//     console.log(`[Agent Session] Updated configuration for session ${sessionId}`);
+//
+//     return NextResponse.json({
+//       currentStatus: updatedState.status,
+//       sessionId,
+//       success: true,
+//       updatedAt: updatedState.lastModified,
+//     });
+//   } catch (error: any) {
+//     console.error(`[Agent Session] Failed to update session:`, error);
+//
+//     return NextResponse.json(
+//       {
+//         error: (error as Error).message,
+//       },
+//       { status: 500 },
+//     );
+//   }
+// }
+//
+// /**
+//  * 删除会话
+//  */
+// export async function DELETE(request: NextRequest) {
+//   try {
+//     const { searchParams } = new URL(request.url);
+//     const sessionId = searchParams.get('sessionId');
+//
+//     if (!sessionId) {
+//       return NextResponse.json(
+//         {
+//           error: 'sessionId parameter is required',
+//         },
+//         { status: 400 },
+//       );
+//     }
+//
+//     // 1. 检查会话是否存在
+//     const currentState = await stateManager.loadAgentState(sessionId);
+//     if (!currentState) {
+//       return NextResponse.json(
+//         {
+//           error: 'Session not found',
+//         },
+//         { status: 404 },
+//       );
+//     }
+//
+//     // 2. 如果会话正在运行，先中断它
+//     if (currentState.status === 'running') {
+//       // 这里应该取消正在进行的任务
+//       // 由于 QStash 不支持直接取消，我们标记会话为中断状态
+//       const interruptedState = {
+//         ...currentState,
+//         interruption: {
+//           canResume: false,
+//           interruptedAt: new Date().toISOString(),
+//           reason: 'Session deleted by user',
+//         },
+//         lastModified: new Date().toISOString(),
+//         status: 'interrupted',
+//       };
+//
+//       await stateManager.saveAgentState(sessionId, interruptedState);
+//
+//       // 发布中断事件
+//       await streamManager.publishStreamEvent(sessionId, {
+//         data: {
+//           message: 'Session was deleted by user',
+//           reason: 'session_deleted',
+//         },
+//         stepIndex: currentState.stepCount,
+//         type: 'error',
+//       });
+//     }
+//
+//     // 3. 删除所有相关数据
+//     await Promise.all([
+//       stateManager.deleteAgentSession(sessionId),
+//       streamManager.cleanupSession(sessionId),
+//     ]);
+//
+//     console.log(`[Agent Session] Deleted session ${sessionId}`);
+//
+//     return NextResponse.json({
+//       deletedAt: new Date().toISOString(),
+//       sessionId,
+//       success: true,
+//     });
+//   } catch (error: any) {
+//     console.error(`[Agent Session] Failed to delete session:`, error);
+//
+//     return NextResponse.json(
+//       {
+//         error: (error as Error).message,
+//       },
+//       { status: 500 },
+//     );
+//   }
+// }

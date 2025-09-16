@@ -1,27 +1,15 @@
+import debug from 'debug';
 import { NextRequest, NextResponse } from 'next/server';
-import { AgentStateManager } from '@/server/services/agent/AgentStateManager';
-import { StreamEventManager } from '@/server/services/agent/StreamEventManager';
+import { AgentStateManager } from '@/server/modules/AgentRuntime/AgentStateManager';
+import { StreamEventManager } from '@/server/modules/AgentRuntime/StreamEventManager';
 import { QueueService } from '@/server/services/queue/QueueService';
 
-// 初始化服务
-const stateManager = new AgentStateManager({
-  host: process.env.REDIS_HOST,
-  port: process.env.REDIS_PORT ? parseInt(process.env.REDIS_PORT) : 6379,
-  password: process.env.REDIS_PASSWORD,
-  db: process.env.REDIS_DB ? parseInt(process.env.REDIS_DB) : 0,
-});
+const log = debug('agent:human-intervention');
+// Initialize services
+const stateManager = new AgentStateManager();
+const streamManager = new StreamEventManager();
 
-const streamManager = new StreamEventManager({
-  host: process.env.REDIS_HOST,
-  port: process.env.REDIS_PORT ? parseInt(process.env.REDIS_PORT) : 6379,
-  password: process.env.REDIS_PASSWORD,
-  db: process.env.REDIS_DB ? parseInt(process.env.REDIS_DB) : 0,
-});
-
-const queueService = new QueueService({
-  qstashToken: process.env.QSTASH_TOKEN!,
-  endpoint: process.env.AGENT_STEP_ENDPOINT || `${process.env.NEXTAUTH_URL}/api/agent/execute-step`,
-});
+const queueService = new QueueService();
 
 /**
  * 处理人工干预请求
@@ -49,7 +37,7 @@ export async function POST(request: NextRequest) {
       }, { status: 400 });
     }
 
-    console.log(`[Human Intervention] Processing ${action} for session ${sessionId}`);
+    log(`Processing ${action} for session ${sessionId}`);
 
     // 1. 加载当前状态
     const currentState = await stateManager.loadAgentState(sessionId);
@@ -63,33 +51,33 @@ export async function POST(request: NextRequest) {
 
     if (currentState.status !== 'waiting_for_human_input') {
       return NextResponse.json({
-        error: 'Session is not waiting for human input',
         currentStatus: currentState.status,
+        error: 'Session is not waiting for human input',
         sessionId,
       }, { status: 409 });
     }
 
     // 2. 发布人工干预开始事件
     await streamManager.publishStreamEvent(sessionId, {
-      type: 'step_start',
-      stepIndex: currentState.stepCount,
       data: {
-        phase: 'human_intervention',
         action,
+        phase: 'human_intervention',
         reason,
         timestamp: Date.now(),
-      }
+      },
+      stepIndex: currentState.stepCount,
+      type: 'step_start'
     });
 
     // 3. 根据操作类型构建参数
     let stepParams: any = {
+      priority: 'high',
       sessionId,
-      stepIndex: currentState.stepCount,
-      priority: 'high', // 人工干预后高优先级执行
+      stepIndex: currentState.stepCount, // 人工干预后高优先级执行
     };
 
     switch (action) {
-      case 'approve':
+      case 'approve': {
         if (!data?.approvedToolCall) {
           return NextResponse.json({
             error: 'approvedToolCall is required for approve action',
@@ -110,15 +98,16 @@ export async function POST(request: NextRequest) {
 
         if (!pendingTool) {
           return NextResponse.json({
-            error: 'Approved tool call not found in pending list',
             approvedToolId: approvedTool.id,
+            error: 'Approved tool call not found in pending list',
           }, { status: 400 });
         }
 
         stepParams.approvedToolCall = approvedTool;
         break;
+      }
 
-      case 'reject':
+      case 'reject': {
         if (!currentState.pendingToolsCalling) {
           return NextResponse.json({
             error: 'No pending tool calls to reject',
@@ -127,8 +116,9 @@ export async function POST(request: NextRequest) {
 
         stepParams.rejectionReason = reason || 'Tool call rejected by user';
         break;
+      }
 
-      case 'input':
+      case 'input': {
         if (!data?.input) {
           return NextResponse.json({
             error: 'input is required for input action',
@@ -142,13 +132,14 @@ export async function POST(request: NextRequest) {
         }
 
         stepParams.humanInput = {
+          metadata: currentState.pendingHumanPrompt.metadata,
           prompt: currentState.pendingHumanPrompt.prompt,
           response: data.input,
-          metadata: currentState.pendingHumanPrompt.metadata,
         };
         break;
+      }
 
-      case 'select':
+      case 'select': {
         if (!data?.selection) {
           return NextResponse.json({
             error: 'selection is required for select action',
@@ -177,17 +168,19 @@ export async function POST(request: NextRequest) {
         }
 
         stepParams.humanInput = {
+          metadata: currentState.pendingHumanSelect.metadata,
+          options: validOptions,
           prompt: currentState.pendingHumanSelect.prompt,
           selection: currentState.pendingHumanSelect.multi ? selection : selection[0],
-          options: validOptions,
-          metadata: currentState.pendingHumanSelect.metadata,
         };
         break;
+      }
 
-      default:
+      default: {
         return NextResponse.json({
           error: `Unknown action: ${action}. Supported actions: approve, reject, input, select`,
         }, { status: 400 });
+      }
     }
 
     // 4. 高优先级调度执行
@@ -195,48 +188,48 @@ export async function POST(request: NextRequest) {
     try {
       messageId = await queueService.scheduleImmediateStep(stepParams);
 
-      console.log(`[Human Intervention] Scheduled immediate execution for session ${sessionId} (messageId: ${messageId})`);
+      log(`Scheduled immediate execution for session ${sessionId} (messageId: ${messageId})`);
     } catch (error) {
       console.error(`[Human Intervention] Failed to schedule execution:`, error);
 
       // 发布错误事件
       await streamManager.publishStreamEvent(sessionId, {
-        type: 'error',
-        stepIndex: currentState.stepCount,
         data: {
-          phase: 'human_intervention_scheduling',
           action,
           error: (error as Error).message,
-        }
+          phase: 'human_intervention_scheduling',
+        },
+        stepIndex: currentState.stepCount,
+        type: 'error'
       });
 
       return NextResponse.json({
-        error: 'Failed to schedule execution after human intervention',
-        details: (error as Error).message,
-        sessionId,
         action,
+        details: (error as Error).message,
+        error: 'Failed to schedule execution after human intervention',
+        sessionId,
       }, { status: 500 });
     }
 
     // 5. 发布人工干预处理完成事件
     await streamManager.publishStreamEvent(sessionId, {
-      type: 'step_complete',
-      stepIndex: currentState.stepCount,
       data: {
-        phase: 'human_intervention_processed',
         action,
+        phase: 'human_intervention_processed',
         reason,
         scheduledMessageId: messageId,
         timestamp: Date.now(),
-      }
+      },
+      stepIndex: currentState.stepCount,
+      type: 'step_complete'
     });
 
     return NextResponse.json({
-      success: true,
-      sessionId,
       action,
       message: `Human intervention processed successfully. Execution resumed.`,
       scheduledMessageId: messageId,
+      sessionId,
+      success: true,
       timestamp: new Date().toISOString(),
     });
 
@@ -293,12 +286,12 @@ export async function GET(request: NextRequest) {
 
       if (state?.status === 'waiting_for_human_input') {
         const intervention: any = {
+          lastModified: state.lastModified,
+          modelConfig: metadata?.modelConfig,
           sessionId: session,
           status: state.status,
           stepCount: state.stepCount,
-          lastModified: state.lastModified,
           userId: metadata?.userId,
-          modelConfig: metadata?.modelConfig,
         };
 
         // 添加具体的待处理内容
@@ -319,8 +312,8 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({
       pendingInterventions,
-      totalCount: pendingInterventions.length,
       timestamp: new Date().toISOString(),
+      totalCount: pendingInterventions.length,
     });
 
   } catch (error: any) {
