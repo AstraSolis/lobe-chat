@@ -1,9 +1,4 @@
-import {
-  HealthCheckResult,
-  HumanInterventionParams,
-  QueueStats,
-  ScheduleStepParams,
-} from '../QueueService';
+import { HealthCheckResult, QueueMessage, QueueStats } from '../types';
 
 /**
  * Queue service implementation interface
@@ -25,17 +20,12 @@ export interface QueueServiceImpl {
   healthCheck(): Promise<HealthCheckResult>;
 
   /**
-   * Batch schedule multiple steps (for resuming interrupted sessions)
+   * Schedule a message to the queue
    */
-  scheduleBatchSteps(sessions: ScheduleStepParams[]): Promise<string[]>;
+  scheduleMessage(message: QueueMessage): Promise<string>;
 
   /**
-   * High priority execution (immediate resume after human intervention)
+   * Schedule multiple messages to the queue
    */
-  scheduleImmediateStep(params: HumanInterventionParams): Promise<string>;
-
-  /**
-   * Schedule next Agent execution step
-   */
-  scheduleNextStep(params: ScheduleStepParams): Promise<string>;
+  scheduleBatchMessages(messages: QueueMessage[]): Promise<string[]>;
 }

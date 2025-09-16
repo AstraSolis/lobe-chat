@@ -1,36 +1,5 @@
-import { RuntimeContext } from '@lobechat/agent-runtime';
-
 import { QueueServiceImpl, createQueueServiceModule } from './impls';
-
-export interface ScheduleStepParams {
-  context?: RuntimeContext;
-  delay?: number;
-  priority?: 'high' | 'normal' | 'low';
-  retries?: number;
-  sessionId: string;
-  stepIndex: number;
-}
-
-export interface HumanInterventionParams {
-  approvedToolCall?: any;
-  context?: RuntimeContext;
-  humanInput?: any;
-  rejectionReason?: string;
-  sessionId: string;
-  stepIndex: number;
-}
-
-export interface QueueStats {
-  completedCount: number;
-  failedCount: number;
-  pendingCount: number;
-  processingCount: number;
-}
-
-export interface HealthCheckResult {
-  healthy: boolean;
-  message?: string;
-}
+import { HealthCheckResult, QueueMessage, QueueStats } from './types';
 
 /**
  * Queue Service
@@ -40,24 +9,17 @@ export class QueueService {
   private impl: QueueServiceImpl = createQueueServiceModule();
 
   /**
-   * Schedule next Agent execution step
+   * Schedule a message to the queue
    */
-  async scheduleNextStep(params: ScheduleStepParams): Promise<string> {
-    return this.impl.scheduleNextStep(params);
+  async scheduleMessage(message: QueueMessage): Promise<string> {
+    return this.impl.scheduleMessage(message);
   }
 
   /**
-   * High priority execution (immediate resume after human intervention)
+   * Schedule multiple messages to the queue
    */
-  async scheduleImmediateStep(params: HumanInterventionParams): Promise<string> {
-    return this.impl.scheduleImmediateStep(params);
-  }
-
-  /**
-   * Batch schedule multiple steps (for resuming interrupted sessions)
-   */
-  async scheduleBatchSteps(sessions: ScheduleStepParams[]): Promise<string[]> {
-    return this.impl.scheduleBatchSteps(sessions);
+  async scheduleBatchMessages(messages: QueueMessage[]): Promise<string[]> {
+    return this.impl.scheduleBatchMessages(messages);
   }
 
   /**

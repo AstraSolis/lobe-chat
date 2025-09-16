@@ -1,11 +1,6 @@
 import debug from 'debug';
 
-import {
-  HealthCheckResult,
-  HumanInterventionParams,
-  QueueStats,
-  ScheduleStepParams,
-} from '../QueueService';
+import { HealthCheckResult, QueueMessage, QueueStats } from '../types';
 import { QueueServiceImpl } from './type';
 
 const log = debug('queue:simple');
@@ -17,17 +12,18 @@ export class SimpleQueueServiceImpl implements QueueServiceImpl {
   // eslint-disable-next-line no-undef
   private timeouts: Map<string, NodeJS.Timeout> = new Map();
 
-  async scheduleNextStep(params: ScheduleStepParams): Promise<string> {
-    const { sessionId, stepIndex, context, delay = 1000 } = params;
+  async scheduleMessage(message: QueueMessage): Promise<string> {
+    const { sessionId, stepIndex, context, endpoint, payload, delay = 1000 } = message;
 
     const taskId = `${sessionId}_${stepIndex}_${Date.now()}`;
 
     const timeout = setTimeout(async () => {
       try {
         // Directly call execution endpoint
-        const response = await fetch(process.env.AGENT_STEP_ENDPOINT!, {
+        const response = await fetch(endpoint, {
           body: JSON.stringify({
             context,
+            payload,
             sessionId,
             stepIndex,
             timestamp: Date.now(),
@@ -40,7 +36,7 @@ export class SimpleQueueServiceImpl implements QueueServiceImpl {
           throw new Error(`HTTP ${response.status}: ${response.statusText}`);
         }
 
-        log('Executed step %d for session %s', stepIndex, sessionId);
+        log('Executed step %d for session %s to endpoint %s', stepIndex, sessionId, endpoint);
       } catch (error) {
         log('Failed to execute step %d for session %s: %O', stepIndex, sessionId, error);
       } finally {
@@ -50,28 +46,24 @@ export class SimpleQueueServiceImpl implements QueueServiceImpl {
 
     this.timeouts.set(taskId, timeout);
 
-    log('Scheduled step %d for session %s with %dms delay', stepIndex, sessionId, delay);
+    log('Scheduled step %d for session %s to %s with %dms delay', stepIndex, sessionId, endpoint, delay);
 
     return taskId;
   }
 
-  async scheduleImmediateStep(params: HumanInterventionParams): Promise<string> {
-    return this.scheduleNextStep({ ...params, delay: 100 });
-  }
-
-  async scheduleBatchSteps(sessions: ScheduleStepParams[]): Promise<string[]> {
+  async scheduleBatchMessages(messages: QueueMessage[]): Promise<string[]> {
     const taskIds: string[] = [];
 
     try {
-      for (const params of sessions) {
-        const taskId = await this.scheduleNextStep(params);
+      for (const message of messages) {
+        const taskId = await this.scheduleMessage(message);
         taskIds.push(taskId);
       }
 
-      log('Scheduled %d batch steps', sessions.length);
+      log('Scheduled %d batch messages', messages.length);
       return taskIds;
     } catch (error) {
-      log('Failed to schedule batch steps: %O', error);
+      log('Failed to schedule batch messages: %O', error);
       throw error;
     }
   }

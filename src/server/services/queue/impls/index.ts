@@ -13,15 +13,10 @@ const log = debug('queue:factory');
 export const createQueueServiceModule = (): QueueServiceImpl => {
   // Check if QStash is configured
   const qstashToken = process.env.QSTASH_TOKEN;
-  const endpoint = process.env.AGENT_STEP_ENDPOINT;
 
-  if (qstashToken && endpoint) {
+  if (qstashToken) {
     log('Using QStash implementation');
-    return new QStashQueueServiceImpl({
-      endpoint,
-      publishUrl: process.env.QSTASH_PUBLISH_URL,
-      qstashToken,
-    });
+    return new QStashQueueServiceImpl({ qstashToken });
   }
 
   log('Using Simple queue implementation');
