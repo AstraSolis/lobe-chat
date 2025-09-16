@@ -77,6 +77,7 @@ export function createStreamingLLMExecutor(ctx: StreamingExecutorContext): Instr
       if (!reader) throw new Error('No readable stream available');
 
       try {
+        // eslint-disable-next-line no-constant-condition
         while (true) {
           const { done, value } = await reader.read();
           if (done) break;
@@ -241,7 +242,9 @@ export function createStreamingToolExecutor(ctx: StreamingExecutorContext): Inst
       };
 
       // 模拟执行时间
-      await new Promise((resolve) => setTimeout(resolve, Math.random() * 500 + 100));
+      await new Promise((resolve) => {
+        setTimeout(resolve, Math.random() * 500 + 100);
+      });
       const executionTime = Date.now() - startTime;
 
       // 发布工具执行结果事件

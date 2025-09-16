@@ -35,7 +35,10 @@ export class StreamEventManager {
   /**
    * 发布流式事件到 Redis Stream
    */
-  async publishStreamEvent(sessionId: string, event: Omit<StreamEvent, 'sessionId' | 'timestamp'>): Promise<string> {
+  async publishStreamEvent(
+    sessionId: string,
+    event: Omit<StreamEvent, 'sessionId' | 'timestamp'>,
+  ): Promise<string> {
     const streamKey = `${this.STREAM_PREFIX}:${sessionId}`;
 
     const eventData: StreamEvent = {
@@ -47,20 +50,28 @@ export class StreamEventManager {
     try {
       const eventId = await this.redis.xadd(
         streamKey,
-        'MAXLEN', '~', '1000', // 限制流长度，防止内存溢出
+        'MAXLEN',
+        '~',
+        '1000', // 限制流长度，防止内存溢出
         '*', // 自动生成 ID
-        'type', eventData.type,
-        'stepIndex', eventData.stepIndex.toString(),
-        'sessionId', eventData.sessionId,
-        'data', JSON.stringify(eventData.data),
-        'timestamp', eventData.timestamp.toString(),
+        'type',
+        eventData.type,
+        'stepIndex',
+        eventData.stepIndex.toString(),
+        'sessionId',
+        eventData.sessionId,
+        'data',
+        JSON.stringify(eventData.data),
+        'timestamp',
+        eventData.timestamp.toString(),
       );
 
       // 设置过期时间
       await this.redis.expire(streamKey, this.STREAM_RETENTION);
 
       log('Published event %s for session %s:%d', eventData.type, sessionId, eventData.stepIndex);
-      return eventId;
+
+      return eventId as string;
     } catch (error) {
       console.error('[StreamEventManager] Failed to publish stream event:', error);
       throw error;
@@ -73,7 +84,7 @@ export class StreamEventManager {
   async publishStreamChunk(
     sessionId: string,
     stepIndex: number,
-    chunkData: StreamChunkData
+    chunkData: StreamChunkData,
   ): Promise<string> {
     return this.publishStreamEvent(sessionId, {
       data: chunkData,
@@ -89,7 +100,7 @@ export class StreamEventManager {
     sessionId: string,
     lastEventId: string = '0',
     onEvents: (events: StreamEvent[]) => void,
-    signal?: AbortSignal
+    signal?: AbortSignal,
   ): Promise<void> {
     const streamKey = `${this.STREAM_PREFIX}:${sessionId}`;
     let currentLastId = lastEventId;
@@ -99,8 +110,11 @@ export class StreamEventManager {
     while (!signal?.aborted) {
       try {
         const results = await this.redis.xread(
-          'BLOCK', 1000, // 1秒超时
-          'STREAMS', streamKey, currentLastId
+          'BLOCK',
+          1000, // 1秒超时
+          'STREAMS',
+          streamKey,
+          currentLastId,
         );
 
         if (results && results.length > 0) {
@@ -143,7 +157,9 @@ export class StreamEventManager {
 
         console.error('[StreamEventManager] Stream subscription error:', error);
         // 短暂延迟后重试
-        await new Promise(resolve => setTimeout(resolve, 1000));
+        await new Promise((resolve) => {
+          setTimeout(resolve, 1000);
+        });
       }
     }
 

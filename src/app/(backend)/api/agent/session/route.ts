@@ -49,7 +49,7 @@ export async function POST(request: NextRequest) {
     }
 
     // 1. 创建 Agent 实例（用于验证配置）
-    const agent = new DurableLobeChatAgent({
+    new DurableLobeChatAgent({
       agentConfig,
       modelConfig,
       sessionId,
