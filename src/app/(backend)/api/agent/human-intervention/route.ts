@@ -3,7 +3,7 @@ import { NextRequest, NextResponse } from 'next/server';
 
 import { AgentRuntimeService } from '@/server/services/agentRuntime';
 
-const log = debug('agent:human-intervention');
+const log = debug('api-route:agent:human-intervention');
 
 // Initialize service
 const agentRuntimeService = new AgentRuntimeService();

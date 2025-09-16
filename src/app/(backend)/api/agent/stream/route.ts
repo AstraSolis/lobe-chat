@@ -3,7 +3,7 @@ import { NextRequest, NextResponse } from 'next/server';
 
 import { StreamEventManager } from '@/server/modules/AgentRuntime/StreamEventManager';
 
-const log = debug('agent:stream');
+const log = debug('api-route:agent:stream');
 
 // Initialize stream event manager
 const streamManager = new StreamEventManager();

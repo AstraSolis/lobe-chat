@@ -18,6 +18,7 @@ export interface AgentExecutionResult {
 
 export interface SessionCreationParams {
   agentConfig?: any;
+  autoStart?: boolean;
   initialContext: RuntimeContext;
   modelConfig?: any;
   sessionId: string;
@@ -25,7 +26,8 @@ export interface SessionCreationParams {
 }
 
 export interface SessionCreationResult {
-  messageId: string;
+  autoStarted: boolean;
+  messageId?: string;
   sessionId: string;
   success: boolean;
 }
@@ -78,4 +80,18 @@ export interface PendingInterventionsResult {
   }>;
   timestamp: string;
   totalCount: number;
+}
+
+export interface StartExecutionParams {
+  sessionId: string;
+  context?: RuntimeContext;
+  priority?: 'high' | 'normal' | 'low';
+  delay?: number;
+}
+
+export interface StartExecutionResult {
+  messageId: string;
+  sessionId: string;
+  scheduled: boolean;
+  success: boolean;
 }

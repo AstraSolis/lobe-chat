@@ -3,7 +3,7 @@ import { NextRequest, NextResponse } from 'next/server';
 
 import { AgentRuntimeService } from '@/server/services/agentRuntime';
 
-const log = debug('agent:session');
+const log = debug('api-route:agent:session');
 
 // Initialize service
 const agentRuntimeService = new AgentRuntimeService();
@@ -56,17 +56,18 @@ export async function POST(request: NextRequest) {
       },
     };
 
-    let firstStepResult;
-    if (autoStart) {
-      // 使用 AgentRuntimeService 创建会话
-      const result = await agentRuntimeService.createSession({
-        agentConfig,
-        initialContext,
-        modelConfig,
-        sessionId,
-        userId,
-      });
+    // 使用 AgentRuntimeService 创建会话
+    const result = await agentRuntimeService.createSession({
+      agentConfig,
+      autoStart,
+      initialContext,
+      modelConfig,
+      sessionId,
+      userId,
+    });
 
+    let firstStepResult;
+    if (result.autoStarted) {
       firstStepResult = {
         context: initialContext,
         messageId: result.messageId,
@@ -74,6 +75,8 @@ export async function POST(request: NextRequest) {
       };
 
       log(`Session ${sessionId} created and first step scheduled (messageId: ${result.messageId})`);
+    } else {
+      log(`Session ${sessionId} created without auto-start`);
     }
 
     return NextResponse.json({
