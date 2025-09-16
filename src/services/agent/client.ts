@@ -184,6 +184,7 @@ class AgentClientService {
       onConnect?.();
     });
 
+    // eslint-disable-next-line unicorn/prefer-add-event-listener
     eventSource.onmessage = (event) => {
       try {
         const data = JSON.parse(event.data) as StreamEvent;
@@ -194,6 +195,7 @@ class AgentClientService {
       }
     };
 
+    // eslint-disable-next-line unicorn/prefer-add-event-listener
     eventSource.onerror = (event) => {
       console.error(`[AgentClientService] Stream error for session ${sessionId}:`, event);
 

@@ -14,6 +14,7 @@ const log = debug('queue:simple');
  * Simplified queue service implementation for scenarios not using QStash
  */
 export class SimpleQueueServiceImpl implements QueueServiceImpl {
+  // eslint-disable-next-line no-undef
   private timeouts: Map<string, NodeJS.Timeout> = new Map();
 
   async scheduleNextStep(params: ScheduleStepParams): Promise<string> {

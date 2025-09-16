@@ -124,7 +124,7 @@ export async function POST(request: NextRequest) {
     };
 
     // 5. 创建 Agent Runtime 实例
-    const runtime = new AgentRuntime(agent, {
+    const runtime = new AgentRuntime(agent as any, {
       executors: {
         call_llm: createStreamingLLMExecutor(executorContext),
         call_tool: createStreamingToolExecutor(executorContext),
@@ -174,7 +174,9 @@ export async function POST(request: NextRequest) {
 
         const executionTime = Date.now() - startTime;
         await stateManager.saveStepResult(sessionId, {
-          events: [{ reason: 'rejected', reasonDetail: rejectionReason, type: 'done' }],
+          events: [
+            { reason: 'user_requested', reasonDetail: rejectionReason, type: 'done' } as any,
+          ],
           executionTime,
           newState: agentState,
           nextContext: undefined,

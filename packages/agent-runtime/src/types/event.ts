@@ -64,6 +64,7 @@ export type FinishReason =
   | 'timeout' // Execution timeout
   | 'agent_decision' // Agent decided to finish
   | 'error_recovery' // Finished due to unrecoverable error
+  | 'c'
   | 'system_shutdown'; // System is shutting down
 
 export interface AgentEventDone {
