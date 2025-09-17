@@ -1,9 +1,10 @@
 'use client';
 
-import { Form, type FormGroupItemType } from '@lobehub/ui';
+import { Form, type FormGroupItemType, Icon, Segmented } from '@lobehub/ui';
 import { useUpdateEffect } from 'ahooks';
 import { Input } from 'antd';
 import isEqual from 'fast-deep-equal';
+import { Briefcase, Coffee } from 'lucide-react';
 import { memo } from 'react';
 import { useTranslation } from 'react-i18next';
 
@@ -41,6 +42,28 @@ const ChatGroupMeta = memo(() => {
         ),
         label: t('settingGroup.description.title'),
         name: 'description',
+      },
+      {
+        children: (
+          <Segmented
+            options={[
+              {
+                icon: <Icon icon={Coffee} size={16} />,
+                label: t('settingGroup.scene.options.casual'),
+                value: 'casual',
+              },
+              {
+                icon: <Icon icon={Briefcase} size={16} />,
+                label: t('settingGroup.scene.options.productive'),
+                value: 'productive',
+              },
+            ]}
+          />
+        ),
+        desc: t('settingGroup.scene.desc'),
+        label: t('settingGroup.scene.title'),
+        minWidth: undefined,
+        name: 'scene',
       },
     ],
     title: t('settingGroup.title'),

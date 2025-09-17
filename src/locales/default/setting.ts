@@ -314,6 +314,14 @@ export default {
       placeholder: '请输入群聊名称',
       title: '群聊名称',
     },
+    scene: {
+      desc: '选择群聊场景',
+      options: {
+        casual: '休闲',
+        productive: '生产力',
+      },
+      title: '群聊场景',
+    },
     submit: '更新群聊',
     systemPrompt: {
       placeholder: '请输入主持人系统提示词',
