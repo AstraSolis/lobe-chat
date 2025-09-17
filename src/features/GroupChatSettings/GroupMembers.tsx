@@ -13,6 +13,7 @@ import { sessionSelectors } from '@/store/session/selectors';
 import { LobeAgentSession, LobeGroupSession, LobeSessionType } from '@/types/session';
 
 import AgentCard from './AgentCard';
+import HostMemberCard from './HostMemberCard';
 
 const useStyles = createStyles(({ css }) => ({
   container: css`
@@ -20,33 +21,7 @@ const useStyles = createStyles(({ css }) => ({
   `,
 }));
 
-// Pre-defined host member
-const HOST_MEMBER: LobeAgentSession = {
-  config: {
-    chatConfig: {},
-    id: 'host-member',
-    model: 'gpt-4',
-    params: {},
-    systemRole: 'You are a group host responsible for moderating the conversation.',
-    tts: {
-      sttLocale: 'auto',
-      ttsService: 'openai' as const,
-      voice: {
-        openai: 'alloy',
-      },
-    },
-  },
-  createdAt: new Date(),
-  id: 'host-member',
-  meta: {
-    avatar: '🤖',
-    description: 'Group conversation host',
-    title: 'Host',
-  },
-  model: 'gpt-4',
-  type: LobeSessionType.Agent,
-  updatedAt: new Date(),
-};
+const HOST_MEMBER_ID = 'host-member';
 
 const GroupMembers = memo(() => {
   const { t } = useTranslation('setting');
@@ -72,8 +47,6 @@ const GroupMembers = memo(() => {
 
   const currentSessionId = useSessionStore((s) => s.activeId);
 
-  console.log("enableSupervisor", groupConfig?.enableSupervisor);
-
   const isSupervisorEnabled = Boolean(groupConfig?.enableSupervisor);
 
   // Get member IDs from current session
@@ -97,17 +70,8 @@ const GroupMembers = memo(() => {
       }
     });
 
-    const finalInGroup = [...inGroup];
-    const finalNotInGroup = [...notInGroup];
-
-    if (isSupervisorEnabled) {
-      finalInGroup.unshift(HOST_MEMBER);
-    } else if (!memberIds.includes(HOST_MEMBER.config.id)) {
-      finalNotInGroup.unshift(HOST_MEMBER);
-    }
-
-    return { agentsInGroup: finalInGroup, agentsNotInGroup: finalNotInGroup };
-  }, [agentSessions, isSupervisorEnabled, memberIds, currentSessionId]);
+    return { agentsInGroup: inGroup, agentsNotInGroup: notInGroup };
+  }, [agentSessions, memberIds, currentSessionId]);
 
   const handleAgentAction = async (agentId: string, action: 'add' | 'remove') => {
     if (!activeGroupId) {
@@ -118,7 +82,7 @@ const GroupMembers = memo(() => {
     console.log(`Attempting to ${action} agent:`, { action, activeGroupId, agentId });
 
     // Check if this is the host member
-    const isHostMember = agentId === HOST_MEMBER.config.id;
+    const isHostMember = agentId === HOST_MEMBER_ID;
 
     // Set loading state for this specific agent
     setLoadingAgentId(agentId);
@@ -154,6 +118,15 @@ const GroupMembers = memo(() => {
     }
   };
 
+  const hostOperationLoading = loadingAgentId === HOST_MEMBER_ID;
+
+  const handleHostToggle = (checked: boolean) => {
+    handleAgentAction(HOST_MEMBER_ID, checked ? 'add' : 'remove');
+  };
+
+  const groupMemberCount = agentsInGroup.length + (isSupervisorEnabled ? 1 : 0);
+  const availableAgentCount = agentsNotInGroup.length + (isSupervisorEnabled ? 0 : 1);
+
   return (
     <Flexbox className={styles.container} gap={40}>
       {/* Agents in Group Section */}
@@ -162,23 +135,26 @@ const GroupMembers = memo(() => {
           <Text strong style={{ fontSize: 18 }}>
             {t('settingGroupMembers.groupMembers')}
           </Text>
-          <Tag>{agentsInGroup.length}</Tag>
+          <Tag>{groupMemberCount}</Tag>
         </Flexbox>
         <Grid gap={16} rows={3}>
-          {agentsInGroup.map((agent) => {
-            const isHostMember = agent.config?.id === HOST_MEMBER.config.id;
-            return (
-              <AgentCard
-                agent={agent}
-                inGroup={true}
-                isHost={isHostMember}
-                key={agent.config?.id}
-                onAction={handleAgentAction}
-                operationLoading={loadingAgentId === agent.config?.id}
-              />
-            );
-          })}
-          {agentsInGroup.length === 0 && (
+          {isSupervisorEnabled && (
+            <HostMemberCard
+              checked
+              loading={hostOperationLoading}
+              onToggle={handleHostToggle}
+            />
+          )}
+          {agentsInGroup.map((agent) => (
+            <AgentCard
+              agent={agent}
+              inGroup={true}
+              key={agent.config?.id}
+              onAction={handleAgentAction}
+              operationLoading={loadingAgentId === agent.config?.id}
+            />
+          ))}
+          {agentsInGroup.length === 0 && !isSupervisorEnabled && (
             <Text style={{ color: '#999', gridColumn: '1 / -1', padding: 40, textAlign: 'center' }}>
               {t('settingGroupMembers.noMembersInGroup')}
             </Text>
@@ -192,23 +168,26 @@ const GroupMembers = memo(() => {
           <Text strong style={{ fontSize: 18 }}>
             {t('settingGroupMembers.availableAgents')}
           </Text>
-          <Tag>{agentsNotInGroup.length}</Tag>
+          <Tag>{availableAgentCount}</Tag>
         </Flexbox>
         <Grid gap={16} rows={3}>
-          {agentsNotInGroup.map((agent) => {
-            const isHostMember = agent.config?.id === HOST_MEMBER.config.id;
-            return (
-              <AgentCard
-                agent={agent}
-                inGroup={false} // Always show as "not in group" since it's in the Available Agents section
-                isHost={isHostMember}
-                key={agent.config?.id}
-                onAction={handleAgentAction}
-                operationLoading={loadingAgentId === agent.config?.id}
-              />
-            );
-          })}
-          {agentsNotInGroup.length === 0 && (
+          {!isSupervisorEnabled && (
+            <HostMemberCard
+              checked={false}
+              loading={hostOperationLoading}
+              onToggle={handleHostToggle}
+            />
+          )}
+          {agentsNotInGroup.map((agent) => (
+            <AgentCard
+              agent={agent}
+              inGroup={false}
+              key={agent.config?.id}
+              onAction={handleAgentAction}
+              operationLoading={loadingAgentId === agent.config?.id}
+            />
+          ))}
+          {agentsNotInGroup.length === 0 && isSupervisorEnabled && (
             <Text style={{ color: '#999', gridColumn: '1 / -1', padding: 40, textAlign: 'center' }}>
               {t('settingGroupMembers.noAvailableAgents')}
             </Text>

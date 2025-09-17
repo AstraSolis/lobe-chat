@@ -31,10 +31,14 @@ const useStyles = createStyles(({ css, token, isDarkMode }) => ({
     }
   `,
   desc: css`
-    min-height: 32px;
+    height: 3em;
     margin-block-end: 0 !important;
-    line-height: ${token.lineHeight};
+    line-height: 1.5;
     color: ${token.colorTextDescription};
+    overflow: hidden;
+  `,
+  title: css`
+    line-height: 1.3;
   `,
 }));
 
@@ -85,7 +89,11 @@ const AgentCard = memo<AgentCardProps>(
                   size={24}
                   style={{ flexShrink: 0 }}
                 />
-                <Text ellipsis style={{ fontSize: 16, fontWeight: 'bold', minWidth: 0 }}>
+                <Text
+                  className={styles.title}
+                  ellipsis
+                  style={{ fontSize: 16, fontWeight: 'bold', minWidth: 0 }}
+                >
                   {title}
                 </Text>
                 {isHost && (
