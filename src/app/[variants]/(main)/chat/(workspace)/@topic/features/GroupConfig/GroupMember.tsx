@@ -11,16 +11,17 @@ import { DEFAULT_AVATAR } from '@/const/meta';
 import { useChatStore } from '@/store/chat';
 import { chatSelectors } from '@/store/chat/selectors';
 import { useChatGroupStore } from '@/store/chatGroup';
+import { chatGroupSelectors } from '@/store/chatGroup/selectors';
 import { useUserStore } from '@/store/user';
 import { userProfileSelectors } from '@/store/user/selectors';
-import { LobeSession } from '@/types/session';
+import { GroupMemberWithAgent, LobeGroupSession, LobeSession } from '@/types/session';
 
 import AgentSettings from '../../../features/AgentSettings';
 import GroupMemberItem from './GroupMemberItem';
 
 interface GroupMemberProps {
   addModalOpen: boolean;
-  currentSession?: LobeSession;
+  currentSession?: LobeGroupSession;
   onAddModalOpenChange: (open: boolean) => void;
   sessionId?: string;
 }
@@ -38,6 +39,7 @@ const GroupMember = memo<GroupMemberProps>(
     const triggerSupervisorDecision = useChatStore((s) => s.internal_triggerSupervisorDecision);
 
     const isSupervisorLoading = useChatStore(chatSelectors.isSupervisorLoading(sessionId || ''));
+    const groupConfig = useChatGroupStore(chatGroupSelectors.currentGroupConfig);
 
     const currentUser = useUserStore((s) => ({
       avatar: userProfileSelectors.userAvatar(s),
@@ -106,20 +108,40 @@ const GroupMember = memo<GroupMemberProps>(
     return (
       <>
         <Flexbox gap={2} padding={6}>
-          {/* Orchestrator */}
-          <GroupMemberItem
-            avatar={'🎙️'}
-            generating={isSupervisorLoading}
-            generatingTooltip={t('groupSidebar.members.orchestratorThinking')}
-            id={'orchestrator'}
-            onStopGenerating={handleStopSupervisor}
-            onStopGeneratingTooltip={t('groupSidebar.members.stopOrchestrator')}
-            onTriggerSupervisor={handleTriggerSupervisor}
-            onTriggerSupervisorTooltip={t('groupSidebar.members.triggerOrchestrator')}
-            pin
-            showActionsOnHover={true}
-            title={t('groupSidebar.members.orchestrator')}
-          />
+          {/* Orchestrator - only show if supervisor is enabled */}
+          {groupConfig?.enableSupervisor && (
+            <GroupMemberItem
+              avatar={'🎙️'}
+              generating={isSupervisorLoading}
+              generatingTooltip={t('groupSidebar.members.orchestratorThinking')}
+              id={'orchestrator'}
+              onStopGenerating={handleStopSupervisor}
+              onStopGeneratingTooltip={t('groupSidebar.members.stopOrchestrator')}
+              onTriggerSupervisor={handleTriggerSupervisor}
+              onTriggerSupervisorTooltip={t('groupSidebar.members.triggerOrchestrator')}
+              pin
+              showActionsOnHover={true}
+              title={t('groupSidebar.members.orchestrator')}
+            />
+          )}
+
+          {/* Host - show if supervisor is disabled and there is a host */}
+          {!groupConfig?.enableSupervisor && (() => {
+            const hostMember = currentSession?.members?.find((member: GroupMemberWithAgent) => member.role === 'host');
+            if (hostMember) {
+              return (
+                <GroupMemberItem
+                  avatar={hostMember.avatar || DEFAULT_AVATAR}
+                  background={hostMember.backgroundColor}
+                  id={hostMember.id || 'host'}
+                  pin
+                  showActionsOnHover={false}
+                  title={`${hostMember.title || 'Host'} (Host)`}
+                />
+              );
+            }
+            return null;
+          })()}
 
           {/* Current User */}
           <GroupMemberItem

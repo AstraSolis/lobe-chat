@@ -57,6 +57,26 @@ const getDebounceThreshold = (responseSpeed?: 'slow' | 'medium' | 'fast'): numbe
 };
 
 /**
+ * Extract mentioned agent IDs from message content
+ * Looks for <mention id="agentId">Name</mention> tags
+ */
+const extractMentionsFromContent = (content: string): string[] => {
+  const mentionRegex = /<mention id="([^"]+)"[^>]*>.*?<\/mention>/g;
+  const mentions: string[] = [];
+  let match;
+
+  while ((match = mentionRegex.exec(content)) !== null) {
+    const mentionId = match[1];
+    // Exclude ALL_MEMBERS as it's not a specific agent
+    if (mentionId && mentionId !== 'ALL_MEMBERS') {
+      mentions.push(mentionId);
+    }
+  }
+
+  return [...new Set(mentions)]; // Remove duplicates
+};
+
+/**
  * Check if a message is a tool calling message that requires a follow-up
  */
 const isToolCallMessage = (message: ChatMessage): boolean => {
@@ -238,7 +258,40 @@ export const chatAiGroupChat: StateCreator<
       }
 
       if (messageId) {
-        internal_triggerSupervisorDecisionDebounced(groupId);
+        const groupConfig = chatGroupSelectors.currentGroupConfig(useChatGroupStore.getState());
+        
+        // If supervisor is disabled, check for direct mentions and trigger them directly
+        if (!groupConfig?.enableSupervisor) {
+          const mentionedAgentIds = extractMentionsFromContent(message);
+          const agents = sessionSelectors.currentGroupAgents(useSessionStore.getState());
+          
+          if (mentionedAgentIds.length > 0) {
+            // Validate that mentioned agents exist in the group
+            const validMentionedAgents = mentionedAgentIds.filter(agentId =>
+              agents?.some(agent => agent.id === agentId)
+            );
+            
+            if (validMentionedAgents.length > 0) {
+              console.log('Supervisor disabled, triggering direct mentions:', validMentionedAgents);
+              
+              // Process mentioned agents directly without supervisor decision
+              const { internal_executeAgentResponses } = get();
+              const decisions = validMentionedAgents.map(agentId => ({
+                id: agentId,
+                target: targetMemberId || undefined, // Pass through the target if it's a DM
+              }));
+              
+              await internal_executeAgentResponses(groupId, decisions);
+            } else {
+              console.log('Supervisor disabled, mentioned agents not found in group');
+            }
+          } else {
+            console.log('Supervisor disabled and no mentions found, no agent responses triggered');
+          }
+        } else {
+          // Normal supervisor flow
+          internal_triggerSupervisorDecisionDebounced(groupId);
+        }
       }
     } catch (error) {
       console.error('Failed to send group message:', error);
@@ -258,6 +311,12 @@ export const chatAiGroupChat: StateCreator<
     if (messages.length === 0) return;
 
     const groupConfig = chatGroupSelectors.currentGroupConfig(useChatGroupStore.getState());
+
+    // If supervisor is disabled, skip supervisor decision
+    if (!groupConfig?.enableSupervisor) {
+      console.log('Supervisor is disabled for this group, skipping supervisor decision');
+      return;
+    }
 
     // Skip supervisor decision if we're in the middle of tool calling sequence or exceeded maxResponseInRow (for automatic triggers only)
     if (shouldAvoidSupervisorDecision(messages, groupConfig?.maxResponseInRow, isManualTrigger)) {

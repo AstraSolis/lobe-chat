@@ -3,7 +3,7 @@
 import { Avatar, Icon, Text, Tooltip } from '@lobehub/ui';
 import { Skeleton, Switch } from 'antd';
 import { createStyles } from 'antd-style';
-import { Loader2 } from 'lucide-react';
+import { Bot, Loader2 } from 'lucide-react';
 import { memo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Flexbox } from 'react-layout-kit';
@@ -41,13 +41,14 @@ const useStyles = createStyles(({ css, token, isDarkMode }) => ({
 interface AgentCardProps {
   agent: LobeAgentSession;
   inGroup: boolean;
+  isHost?: boolean;
   loading?: boolean;
   onAction: (agentId: string, action: 'add' | 'remove') => void;
   operationLoading?: boolean;
 }
 
 const AgentCard = memo<AgentCardProps>(
-  ({ agent, inGroup, loading, onAction, operationLoading }) => {
+  ({ agent, inGroup, isHost, loading, onAction, operationLoading }) => {
     const { t } = useTranslation('setting');
     const { cx, styles } = useStyles();
 
@@ -87,6 +88,11 @@ const AgentCard = memo<AgentCardProps>(
                 <Text ellipsis style={{ fontSize: 16, fontWeight: 'bold', minWidth: 0 }}>
                   {title}
                 </Text>
+                {isHost && (
+                  <Tooltip title={t('settingGroupMembers.groupHost')}>
+                    <Icon icon={Bot} size="small" style={{ color: '#1890ff' }} />
+                  </Tooltip>
+                )}
               </Flexbox>
             </Flexbox>
             <Text
