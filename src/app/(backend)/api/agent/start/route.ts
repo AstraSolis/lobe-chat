@@ -53,29 +53,3 @@ export async function POST(request: NextRequest) {
     );
   }
 }
-
-/**
- * 健康检查端点
- */
-export async function GET() {
-  if (!isEnableAgent()) {
-    return NextResponse.json({ error: 'Agent features are not enabled' }, { status: 404 });
-  }
-
-  try {
-    return NextResponse.json({
-      healthy: true,
-      message: 'Agent start service is running',
-      timestamp: new Date().toISOString(),
-    });
-  } catch (error: any) {
-    return NextResponse.json(
-      {
-        error: error.message,
-        healthy: false,
-        timestamp: new Date().toISOString(),
-      },
-      { status: 503 },
-    );
-  }
-}

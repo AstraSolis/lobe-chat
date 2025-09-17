@@ -4,7 +4,7 @@ import { QStashQueueServiceImpl } from './qstash';
 import { SimpleQueueServiceImpl } from './simple';
 import { QueueServiceImpl } from './type';
 
-const log = debug('queue:factory');
+const log = debug('lobe-server:service:queue:factory');
 
 /**
  * Create queue service module

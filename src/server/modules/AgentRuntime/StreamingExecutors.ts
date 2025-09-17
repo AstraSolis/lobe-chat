@@ -1,8 +1,8 @@
 import { AgentEvent, AgentInstruction, InstructionExecutor } from '@lobechat/agent-runtime';
 import { ClientSecretPayload } from '@lobechat/types';
 import debug from 'debug';
+import OpenAI from 'openai';
 
-import { initModelRuntimeWithUserPayload } from '../ModelRuntime';
 import { StreamEventManager } from './StreamEventManager';
 
 const log = debug('lobe-server:agent-runtime:streaming-executors');
@@ -57,56 +57,71 @@ export function createStreamingLLMExecutor(ctx: StreamingExecutorContext): Instr
       let imageList: any[] = [];
       let grounding: any = null;
 
-      // 初始化 ModelRuntime
-      const modelRuntime = await initModelRuntimeWithUserPayload(
-        llmPayload.provider,
-        ctx.userPayload || {},
-      );
+      // 初始化 OpenAI 客户端
+      const openai = new OpenAI({
+        apiKey: process.env.OPENAI_API_KEY,
+        baseURL: process.env.OPENAI_PROXY_URL,
+      });
 
-      // 直接使用 ModelRuntime 进行流式处理
-      const stream = modelRuntime.chat({
+      // 使用 OpenAI SDK 进行流式处理
+      const stream = await openai.chat.completions.create({
         messages: llmPayload.messages,
         model: llmPayload.model,
         stream: true,
-        temperature: llmPayload.temperature || 0.7,
       });
 
       // 处理流式响应
-      const response = await stream;
-      const reader = response.body?.getReader();
-      if (!reader) throw new Error('No readable stream available');
-
       try {
-        // eslint-disable-next-line no-constant-condition
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
+        for await (const chunk of stream) {
+          const delta = chunk.choices[0]?.delta;
+          if (!delta) continue;
 
-          // 解析 SSE 数据
-          const chunk = JSON.parse(new TextDecoder().decode(value));
-          if (!chunk) continue;
-          // 处理不同类型的流式内容
-          if (chunk.type === 'text' && chunk.text) {
-            content += chunk.text;
+          // 处理文本内容
+          if (delta.content) {
+            content += delta.content;
 
             // 立即发布流式内容到 Redis Stream
+            console.time('publishStreamChunk');
             await streamManager.publishStreamChunk(sessionId, stepIndex, {
               chunkType: 'text',
-              content: chunk.text,
+              content: delta.content,
               fullContent: content,
               messageId: llmPayload.assistantMessageId || 'unknown',
             });
+            console.timeEnd('publishStreamChunk');
 
             // 实时更新数据库中的消息内容
-            if (ctx.messageModel && llmPayload.assistantMessageId) {
-              try {
-                await ctx.messageModel.updateContent(llmPayload.assistantMessageId, content);
-              } catch (error) {
-                log('[StreamingLLMExecutor] Failed to update message content: %O', error);
+            // if (ctx.messageModel && llmPayload.assistantMessageId) {
+            //   try {
+            //     await ctx.messageModel.updateContent(llmPayload.assistantMessageId, content);
+            //   } catch (error) {
+            //     log('[StreamingLLMExecutor] Failed to update message content: %O', error);
+            //   }
+            // }
+          }
+
+          // 处理工具调用
+          if (delta.tool_calls) {
+            // 合并工具调用
+            for (const toolCall of delta.tool_calls) {
+              const existingToolCall = toolCalls.find((tc) => tc.id === toolCall.id);
+              if (existingToolCall) {
+                // 更新现有工具调用
+                if (toolCall.function?.arguments) {
+                  existingToolCall.function.arguments += toolCall.function.arguments;
+                }
+              } else {
+                // 添加新工具调用
+                toolCalls.push({
+                  function: {
+                    arguments: toolCall.function?.arguments || '',
+                    name: toolCall.function?.name || '',
+                  },
+                  id: toolCall.id,
+                  type: toolCall.type,
+                });
               }
             }
-          } else if (chunk.type === 'tool_calls' && chunk.tool_calls) {
-            toolCalls = chunk.tool_calls;
 
             await streamManager.publishStreamChunk(sessionId, stepIndex, {
               chunkType: 'tool_calls',
@@ -116,10 +131,18 @@ export function createStreamingLLMExecutor(ctx: StreamingExecutorContext): Instr
           }
 
           // 构建标准 Agent Runtime 事件
-          events.push({ chunk, type: 'llm_stream' });
+          events.push({
+            chunk: {
+              text: delta.content || '',
+              tool_calls: delta.tool_calls || undefined,
+              type: 'text',
+            },
+            type: 'llm_stream',
+          });
         }
-      } finally {
-        reader.releaseLock();
+      } catch (streamError) {
+        log('[StreamingLLMExecutor] Stream processing error: %O', streamError);
+        throw streamError;
       }
 
       // 发布流式结束事件

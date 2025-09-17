@@ -5,7 +5,7 @@ import { AgentRuntimeService } from '@/server/services/agentRuntime';
 
 import { isEnableAgent } from '../isEnableAgent';
 
-const log = debug('api-route:agent:session');
+const log = debug('api-route:agent:createSession');
 
 /**
  * 创建新的 Agent 会话
@@ -24,7 +24,7 @@ export async function POST(request: NextRequest) {
 
     const {
       messages = [],
-      modelConfig = {},
+      modelRuntimeConfig = {},
       agentConfig = {},
       sessionId: providedSessionId,
       userId,
@@ -38,9 +38,9 @@ export async function POST(request: NextRequest) {
     log(`Creating session ${sessionId} for user ${userId}`);
 
     // 验证必需参数
-    if (!modelConfig.model || !modelConfig.provider) {
+    if (!modelRuntimeConfig.model || !modelRuntimeConfig.provider) {
       return NextResponse.json(
-        { error: 'modelConfig.model and modelConfig.provider are required' },
+        { error: 'modelRuntimeConfig.model and modelRuntimeConfig.provider are required' },
         { status: 400 },
       );
     }
@@ -67,7 +67,8 @@ export async function POST(request: NextRequest) {
       agentConfig,
       autoStart,
       initialContext,
-      modelConfig,
+      initialMessages: messages, // 传递初始消息
+      modelRuntimeConfig,
       sessionId,
       userId,
     });

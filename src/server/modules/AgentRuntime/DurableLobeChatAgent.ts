@@ -12,7 +12,7 @@ export interface DurableAgentConfig {
     [key: string]: any;
     maxSteps?: number;
   };
-  modelConfig?: {
+  modelRuntimeConfig?: {
     model: string;
     provider: string;
   };
@@ -39,8 +39,8 @@ export class DurableLobeChatAgent {
         return {
           payload: {
             messages: state.messages,
-            model: this.config.modelConfig?.model || 'gpt-3.5-turbo',
-            provider: this.config.modelConfig?.provider || 'openai',
+            model: this.config.modelRuntimeConfig?.model,
+            provider: this.config.modelRuntimeConfig?.provider,
           },
           type: 'call_llm',
         };

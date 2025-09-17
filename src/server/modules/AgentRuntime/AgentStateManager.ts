@@ -18,7 +18,7 @@ export interface AgentSessionMetadata {
   agentConfig?: any;
   createdAt: string;
   lastActiveAt: string;
-  modelConfig?: any;
+  modelRuntimeConfig?: any;
   status: AgentState['status'];
   totalCost: number;
   totalSteps: number;
@@ -167,7 +167,9 @@ export class AgentStateManager {
         agentConfig: metadata.agentConfig ? JSON.parse(metadata.agentConfig) : undefined,
         createdAt: metadata.createdAt,
         lastActiveAt: metadata.lastActiveAt,
-        modelConfig: metadata.modelConfig ? JSON.parse(metadata.modelConfig) : undefined,
+        modelRuntimeConfig: metadata.modelRuntimeConfig
+          ? JSON.parse(metadata.modelRuntimeConfig)
+          : undefined,
         status: metadata.status as AgentState['status'],
         totalCost: parseFloat(metadata.totalCost) || 0,
         totalSteps: parseInt(metadata.totalSteps) || 0,
@@ -186,7 +188,7 @@ export class AgentStateManager {
     sessionId: string,
     data: {
       agentConfig?: any;
-      modelConfig?: any;
+      modelRuntimeConfig?: any;
       userId?: string;
     },
   ): Promise<void> {
@@ -197,7 +199,7 @@ export class AgentStateManager {
         agentConfig: data.agentConfig,
         createdAt: new Date().toISOString(),
         lastActiveAt: new Date().toISOString(),
-        modelConfig: data.modelConfig,
+        modelRuntimeConfig: data.modelRuntimeConfig,
         status: 'idle',
         totalCost: 0,
         totalSteps: 0,
@@ -214,7 +216,8 @@ export class AgentStateManager {
       };
 
       if (metadata.userId) redisData.userId = metadata.userId;
-      if (metadata.modelConfig) redisData.modelConfig = JSON.stringify(metadata.modelConfig);
+      if (metadata.modelRuntimeConfig)
+        redisData.modelRuntimeConfig = JSON.stringify(metadata.modelRuntimeConfig);
       if (metadata.agentConfig) redisData.agentConfig = JSON.stringify(metadata.agentConfig);
 
       await this.redis.hmset(metaKey, redisData);

@@ -4,7 +4,7 @@ import debug from 'debug';
 import { HealthCheckResult, QueueMessage, QueueStats } from '../types';
 import { QueueServiceImpl } from './type';
 
-const log = debug('queue:qstash');
+const log = debug('lobe-server:service:queue:qstash');
 
 /**
  * QStash queue service implementation
@@ -43,7 +43,7 @@ export class QStashQueueServiceImpl implements QueueServiceImpl {
           stepIndex,
           timestamp: Date.now(),
         },
-        delay: delay,
+        delay: Math.ceil(delay / 1000), // 将毫秒转换为秒
         headers: {
           'Content-Type': 'application/json',
           'X-Agent-Priority': priority,

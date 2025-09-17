@@ -20,7 +20,8 @@ export interface SessionCreationParams {
   agentConfig?: any;
   autoStart?: boolean;
   initialContext: RuntimeContext;
-  modelConfig?: any;
+  initialMessages?: any[];
+  modelRuntimeConfig?: any;
   sessionId: string;
   userId?: string;
 }
@@ -68,7 +69,7 @@ export interface SessionStatusResult {
 export interface PendingInterventionsResult {
   pendingInterventions: Array<{
     lastModified: string;
-    modelConfig?: any;
+    modelRuntimeConfig?: any;
     pendingHumanPrompt?: any;
     pendingHumanSelect?: any;
     pendingToolsCalling?: any[];

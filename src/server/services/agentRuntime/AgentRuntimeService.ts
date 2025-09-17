@@ -50,9 +50,10 @@ export class AgentRuntimeService {
       sessionId,
       initialContext,
       agentConfig,
-      modelConfig,
+      modelRuntimeConfig,
       userId,
       autoStart = true,
+      initialMessages = [],
     } = params;
 
     try {
@@ -62,11 +63,11 @@ export class AgentRuntimeService {
       const initialState = {
         events: [],
         lastModified: new Date().toISOString(),
-        messages: [],
+        messages: initialMessages || [], // 使用传入的初始消息
         metadata: {
           agentConfig,
           createdAt: new Date().toISOString(),
-          modelConfig,
+          modelRuntimeConfig,
           userId,
         },
         sessionId,
@@ -77,7 +78,7 @@ export class AgentRuntimeService {
       await this.stateManager.saveAgentState(sessionId, initialState as any);
       await this.stateManager.createSessionMetadata(sessionId, {
         agentConfig,
-        modelConfig,
+        modelRuntimeConfig,
         userId,
       });
 
@@ -88,7 +89,7 @@ export class AgentRuntimeService {
       if (autoStart) {
         messageId = await this.queueService.scheduleMessage({
           context: initialContext,
-          delay: 500, // 短延迟启动
+          delay: 50, // 短延迟启动
           endpoint: `${this.baseURL}/run`,
           priority: 'high',
           sessionId,
@@ -156,12 +157,13 @@ export class AgentRuntimeService {
       }
 
       // 执行步骤
+      const startAt = Date.now();
       const stepResult = await runtime.step(currentState, currentContext);
 
       // 保存状态
       await this.stateManager.saveStepResult(sessionId, {
         ...stepResult,
-        executionTime: Date.now() - Date.now(),
+        executionTime: Date.now() - startAt,
         stepIndex, // placeholder
       });
 
@@ -370,7 +372,7 @@ export class AgentRuntimeService {
           if (state?.status === 'waiting_for_human_input') {
             const intervention: any = {
               lastModified: state.lastModified,
-              modelConfig: metadata?.modelConfig,
+              modelRuntimeConfig: metadata?.modelRuntimeConfig,
               sessionId: session,
               status: state.status,
               stepCount: state.stepCount,
@@ -541,7 +543,7 @@ export class AgentRuntimeService {
     // 创建 Durable Agent 实例
     const agent = new DurableLobeChatAgent({
       agentConfig: sessionMetadata?.agentConfig,
-      modelConfig: sessionMetadata?.modelConfig,
+      modelRuntimeConfig: sessionMetadata?.modelRuntimeConfig,
       sessionId,
       userId: sessionMetadata?.userId,
     });
