@@ -5,7 +5,15 @@ export interface StreamEvent {
   sessionId?: string;
   stepIndex?: number;
   timestamp: number;
-  type: 'connected' | 'step_start' | 'step_complete' | 'llm_stream_chunk' | 'llm_stream_complete' | 'tool_start' | 'tool_complete' | 'human_approval_request' | 'error' | 'heartbeat';
+  type:
+    | 'connected'
+    | 'stream_start'
+    | 'stream_chunk'
+    | 'stream_end'
+    | 'step_start'
+    | 'step_complete'
+    | 'error'
+    | 'heartbeat';
 }
 
 export interface StreamConnectionOptions {
@@ -35,11 +43,11 @@ export interface AgentSessionRequest {
     content: string;
     role: string;
     tool_calls?: Array<{
-      function: { arguments: string, name: string; };
+      function: { arguments: string; name: string };
       id: string;
     }>;
   }>;
-  modelConfig: {
+  modelRuntimeConfig: {
     [key: string]: any;
     model: string;
     provider: string;
@@ -49,19 +57,12 @@ export interface AgentSessionRequest {
 }
 
 export interface AgentSessionResponse {
+  autoStart: boolean;
   createdAt: string;
   firstStep?: {
     context?: any;
-    error?: string;
     messageId?: string;
     scheduled: boolean;
-  };
-  initialState: {
-    costLimit?: any;
-    maxSteps?: number;
-    messageCount: number;
-    status: string;
-    stepCount: number;
   };
   sessionId: string;
   status: string;
@@ -69,8 +70,9 @@ export interface AgentSessionResponse {
 }
 
 export interface HumanInterventionRequest {
-  action: 'approve' | 'reject' | 'modify';
+  action: 'approve' | 'reject' | 'input' | 'select';
   data?: any;
+  reason?: string;
   sessionId: string;
 }
 
@@ -93,7 +95,9 @@ class AgentClientService {
     });
 
     if (!response.ok) {
-      const error = await response.json().catch(() => ({ error: 'Failed to create agent session' }));
+      const error = await response
+        .json()
+        .catch(() => ({ error: 'Failed to create agent session' }));
       throw new Error(error.error || 'Failed to create agent session');
     }
 
@@ -148,7 +152,9 @@ class AgentClientService {
     });
 
     if (!response.ok) {
-      const error = await response.json().catch(() => ({ error: 'Failed to handle human intervention' }));
+      const error = await response
+        .json()
+        .catch(() => ({ error: 'Failed to handle human intervention' }));
       throw new Error(error.error || 'Failed to handle human intervention');
     }
 
@@ -158,10 +164,7 @@ class AgentClientService {
   /**
    * Create a streaming connection to receive real-time agent events
    */
-  createStreamConnection(
-    sessionId: string,
-    options: StreamConnectionOptions = {}
-  ): EventSource {
+  createStreamConnection(sessionId: string, options: StreamConnectionOptions = {}): EventSource {
     const {
       includeHistory = false,
       lastEventId = '0',
@@ -222,15 +225,18 @@ class AgentClientService {
   /**
    * Execute a single step manually (mainly for debugging)
    */
-  async executeStep(sessionId: string, options: {
-    approvedToolCall?: any;
-    context?: any;
-    forceComplete?: boolean;
-    humanInput?: any;
-    priority?: 'low' | 'normal' | 'high';
-    rejectionReason?: string;
-    stepIndex?: number;
-  } = {}): Promise<any> {
+  async executeStep(
+    sessionId: string,
+    options: {
+      approvedToolCall?: any;
+      context?: any;
+      forceComplete?: boolean;
+      humanInput?: any;
+      priority?: 'low' | 'normal' | 'high';
+      rejectionReason?: string;
+      stepIndex?: number;
+    } = {},
+  ): Promise<any> {
     const response = await fetch(`${this.baseUrl}/execute-step`, {
       body: JSON.stringify({
         sessionId,

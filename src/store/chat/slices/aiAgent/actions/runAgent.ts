@@ -1,4 +1,5 @@
 import { isDesktop } from '@lobechat/const';
+import debug from 'debug';
 import { produce } from 'immer';
 import { StateCreator } from 'zustand/vanilla';
 
@@ -10,6 +11,7 @@ import { ChatStore } from '@/store/chat/store';
 import { CreateMessageParams, SendMessageParams } from '@/types/message';
 import { setNamespace } from '@/utils/storeDebug';
 
+const log = debug('store:chat:ai-agent:runAgent');
 const n = setNamespace('agent');
 
 export interface AgentAction {
@@ -38,7 +40,7 @@ export const agentSlice: StateCreator<ChatStore, [['zustand/devtools', never]], 
     const session = get().agentSessions[assistantId];
     if (!session) return;
 
-    console.log(`[Agent Runtime] Cleaning up agent session for ${assistantId}`);
+    log(`Cleaning up agent session for ${assistantId}`);
 
     // 关闭 EventSource 连接
     if (session.eventSource) {
@@ -66,7 +68,7 @@ export const agentSlice: StateCreator<ChatStore, [['zustand/devtools', never]], 
   },
 
   internal_handleAgentError: (assistantId: string, errorMessage: string) => {
-    console.error(`[Agent Runtime] Agent error for ${assistantId}: ${errorMessage}`);
+    log(`Agent error for ${assistantId}: ${errorMessage}`);
 
     // 更新会话错误状态
     set(
@@ -97,9 +99,12 @@ export const agentSlice: StateCreator<ChatStore, [['zustand/devtools', never]], 
   // ======== Agent Runtime 相关方法 ========
   internal_handleAgentStreamEvent: async (assistantId: string, event: StreamEvent) => {
     const session = get().agentSessions[assistantId];
-    if (!session) return;
+    if (!session) {
+      log(`No session found for ${assistantId}, ignoring event ${event.type}`);
+      return;
+    }
 
-    console.log(`[Agent Runtime] Handling event ${event.type} for ${assistantId}:`, event);
+    log(`Handling event ${event.type} for ${assistantId}:`, event);
 
     // 更新会话状态
     set(
@@ -117,109 +122,7 @@ export const agentSlice: StateCreator<ChatStore, [['zustand/devtools', never]], 
 
     switch (event.type) {
       case 'connected': {
-        console.log(`[Agent Runtime] Agent stream connected for ${assistantId}`);
-        break;
-      }
-
-      case 'step_start': {
-        // 步骤开始事件
-        break;
-      }
-
-      case 'step_complete': {
-        const { status, hasNextContext } = event.data || {};
-
-        // 更新状态
-        set(
-          produce((draft) => {
-            if (draft.agentSessions[assistantId]) {
-              draft.agentSessions[assistantId].status = status;
-            }
-          }),
-          false,
-          n('updateAgentStatus', { assistantId, status }),
-        );
-
-        // 如果步骤完成且没有下一个上下文，可能需要特殊处理
-        if (status === 'done' && !hasNextContext) {
-          get().internal_toggleChatLoading(false, assistantId);
-          // 可能需要显示桌面通知等
-          if (isDesktop) {
-            try {
-              const { desktopNotificationService } = await import(
-                '@/services/electron/desktopNotification'
-              );
-              await desktopNotificationService.showNotification({
-                body: 'AI 回复生成完成',
-                title: 'AI 回复完成', // TODO: 使用 i18n
-              });
-            } catch (error) {
-              console.error('Desktop notification error:', error);
-            }
-          }
-        }
-        break;
-      }
-
-      case 'llm_stream_chunk': {
-        // LLM 流式输出
-        const { content, chunk } = event.data || {};
-        if (content || chunk) {
-          await get().internal_updateMessageContent(assistantId, content || chunk);
-        }
-        break;
-      }
-
-      case 'llm_stream_complete': {
-        // LLM 流式完成
-        const { content, usage, toolCalls } = event.data || {};
-        if (toolCalls && toolCalls.length > 0) {
-          // 更新工具调用
-          await get().internal_updateMessageContent(assistantId, content || '', {
-            metadata: usage,
-            toolCalls,
-          });
-        }
-        break;
-      }
-
-      case 'tool_start': {
-        const { toolCall } = event.data || {};
-        console.log(`[Agent Runtime] Tool call started: ${toolCall?.function?.name}`);
-        break;
-      }
-
-      case 'tool_complete': {
-        const { toolCall } = event.data || {};
-        console.log(`[Agent Runtime] Tool call completed: ${toolCall?.function?.name}`);
-        // 刷新消息以显示工具结果
-        await get().refreshMessages();
-        break;
-      }
-
-      case 'human_approval_request': {
-        // 需要人工批准
-        const { pendingToolsCalling } = event.data || {};
-        set(
-          produce((draft) => {
-            if (draft.agentSessions[assistantId]) {
-              draft.agentSessions[assistantId].needsHumanInput = true;
-              draft.agentSessions[assistantId].pendingApproval = pendingToolsCalling;
-            }
-          }),
-          false,
-          n('setHumanApprovalNeeded', { assistantId }),
-        );
-
-        // 停止 loading 状态，等待人工干预
-        get().internal_toggleChatLoading(false, assistantId);
-        break;
-      }
-
-      case 'error': {
-        const { error, message } = event.data || {};
-        console.error(`[Agent Runtime] Error in agent execution:`, error);
-        get().internal_handleAgentError(assistantId, message || error || 'Unknown agent error');
+        log(`Agent stream connected for ${assistantId}`);
         break;
       }
 
@@ -228,8 +131,133 @@ export const agentSlice: StateCreator<ChatStore, [['zustand/devtools', never]], 
         break;
       }
 
+      case 'stream_start': {
+        log(`Stream started for ${assistantId}:`, event.data);
+        break;
+      }
+
+      case 'stream_chunk': {
+        // 处理流式内容块
+        const { chunkType, content, fullContent, toolCalls } = event.data || {};
+        log(
+          `Stream chunk received for ${assistantId}: type=${chunkType}, hasContent=${!!content}, hasToolCalls=${!!toolCalls}`,
+        );
+
+        if (chunkType === 'text' && content) {
+          // 更新文本内容
+          await get().internal_updateMessageContent(assistantId, content);
+        } else if (chunkType === 'tool_calls' && toolCalls) {
+          // 更新工具调用
+          log(`Updating tool calls for ${assistantId}:`, toolCalls);
+          await get().internal_updateMessageContent(assistantId, fullContent || '', {
+            toolCalls,
+          });
+        }
+        break;
+      }
+
+      case 'stream_end': {
+        // 流式结束，更新最终内容
+        const { finalContent, toolCalls, reasoning, imageList, grounding } = event.data || {};
+        log(`Stream ended for ${assistantId}:`, {
+          hasFinalContent: !!finalContent,
+          hasGrounding: !!grounding,
+          hasImageList: !!(imageList && imageList.length > 0),
+          hasReasoning: !!reasoning,
+          hasToolCalls: !!(toolCalls && toolCalls.length > 0),
+        });
+
+        if (finalContent !== undefined) {
+          await get().internal_updateMessageContent(assistantId, finalContent, {
+            ...(toolCalls && toolCalls.length > 0 ? { toolCalls } : {}),
+            ...(reasoning ? { reasoning } : {}),
+            ...(imageList && imageList.length > 0 ? { imageList } : {}),
+            ...(grounding ? { search: grounding } : {}),
+          });
+        }
+
+        // 停止 loading 状态
+        log(`Stopping loading for ${assistantId}`);
+        get().internal_toggleChatLoading(false, assistantId);
+
+        // 显示桌面通知
+        if (isDesktop) {
+          try {
+            const { desktopNotificationService } = await import(
+              '@/services/electron/desktopNotification'
+            );
+            await desktopNotificationService.showNotification({
+              body: 'AI 回复生成完成',
+              title: 'AI 回复完成', // TODO: 使用 i18n
+            });
+          } catch (error) {
+            console.error('Desktop notification error:', error);
+          }
+        }
+        break;
+      }
+
+      case 'step_start': {
+        const { phase, toolCall, pendingToolsCalling, requiresApproval } = event.data || {};
+
+        if (phase === 'human_approval' && requiresApproval) {
+          // 需要人工批准
+          log(`Human approval required for ${assistantId}:`, pendingToolsCalling);
+          set(
+            produce((draft) => {
+              if (draft.agentSessions[assistantId]) {
+                draft.agentSessions[assistantId].needsHumanInput = true;
+                draft.agentSessions[assistantId].pendingApproval = pendingToolsCalling;
+              }
+            }),
+            false,
+            n('setHumanApprovalNeeded', { assistantId }),
+          );
+
+          // 停止 loading 状态，等待人工干预
+          log(`Stopping loading for human approval: ${assistantId}`);
+          get().internal_toggleChatLoading(false, assistantId);
+        } else if (phase === 'tool_execution' && toolCall) {
+          log(`Tool execution started for ${assistantId}: ${toolCall.function?.name}`);
+        }
+        break;
+      }
+
+      case 'step_complete': {
+        const { phase, result, executionTime, finalState } = event.data || {};
+
+        if (phase === 'tool_execution' && result) {
+          log(`Tool execution completed for ${assistantId} in ${executionTime}ms:`, result);
+          // 刷新消息以显示工具结果
+          await get().refreshMessages();
+        } else if (phase === 'execution_complete' && finalState) {
+          // Agent 执行完成
+          log(`Agent execution completed for ${assistantId}:`, finalState);
+          set(
+            produce((draft) => {
+              if (draft.agentSessions[assistantId]) {
+                draft.agentSessions[assistantId].status = finalState.status;
+              }
+            }),
+            false,
+            n('updateAgentFinalStatus', { assistantId, status: finalState.status }),
+          );
+
+          log(`Stopping loading for completed agent: ${assistantId}`);
+          get().internal_toggleChatLoading(false, assistantId);
+        }
+        break;
+      }
+
+      case 'error': {
+        const { error, message, phase } = event.data || {};
+        log(`Error in ${phase} for ${assistantId}:`, error);
+        get().internal_handleAgentError(assistantId, message || error || 'Unknown agent error');
+        break;
+      }
+
       default: {
-        console.log(`[Agent Runtime] Unknown event type: ${event.type}`);
+        log(`Unknown event type for ${assistantId}: ${event.type}`);
         break;
       }
     }
@@ -238,12 +266,12 @@ export const agentSlice: StateCreator<ChatStore, [['zustand/devtools', never]], 
   internal_handleHumanIntervention: async (assistantId: string, action: string, data?: any) => {
     const session = get().agentSessions[assistantId];
     if (!session || !session.needsHumanInput) {
-      console.warn(`[Agent Runtime] No human intervention needed for ${assistantId}`);
+      log(`No human intervention needed for ${assistantId}`);
       return;
     }
 
     try {
-      console.log(`[Agent Runtime] Handling human intervention ${action} for ${assistantId}`);
+      log(`Handling human intervention ${action} for ${assistantId}:`, data);
 
       // 发送人工干预请求
       await agentClientService.handleHumanIntervention({
@@ -269,9 +297,9 @@ export const agentSlice: StateCreator<ChatStore, [['zustand/devtools', never]], 
         n('clearHumanIntervention', { action, assistantId }),
       );
 
-      console.log(`[Agent Runtime] Human intervention ${action} processed for ${assistantId}`);
+      log(`Human intervention ${action} processed for ${assistantId}`);
     } catch (error) {
-      console.error(`[Agent Runtime] Failed to handle human intervention:`, error);
+      log(`Failed to handle human intervention for ${assistantId}:`, error);
       get().internal_handleAgentError(
         assistantId,
         `Human intervention failed: ${(error as Error).message}`,
@@ -286,7 +314,15 @@ export const agentSlice: StateCreator<ChatStore, [['zustand/devtools', never]], 
     isWelcomeQuestion: _isWelcomeQuestion,
   }: SendMessageParams) => {
     const { activeTopicId, activeId, activeThreadId } = get();
-    if (!activeId) return;
+    if (!activeId) {
+      log('No active session ID, cannot send agent message');
+      return;
+    }
+
+    log(`Starting agent message for session ${activeId}:`, {
+      fileCount: files?.length || 0,
+      message,
+    });
 
     const { createAgentWorkflowContext } = await import('@/services/agentRuntime');
 
@@ -361,15 +397,16 @@ export const agentSlice: StateCreator<ChatStore, [['zustand/devtools', never]], 
           },
         ],
         // 使用当前 sessionId 作为 userId
-        modelConfig: {
+        modelRuntimeConfig: {
           provider: provider!,
           ...agentConfig,
         },
         userId: activeId,
       });
 
-      console.log(
-        `[Agent Runtime] Created session ${sessionResponse.sessionId} for message ${agentMessageId}`,
+      log(
+        `Created session ${sessionResponse.sessionId} for message ${agentMessageId}:`,
+        sessionResponse,
       );
 
       // 存储 Agent 会话信息
@@ -378,7 +415,7 @@ export const agentSlice: StateCreator<ChatStore, [['zustand/devtools', never]], 
           draft.agentSessions[agentMessageId] = {
             lastEventId: '0',
             sessionId: sessionResponse.sessionId,
-            status: sessionResponse.initialState.status,
+            status: 'created', // 使用后端返回的实际状态
             stepCount: 0,
             totalCost: 0,
           };
@@ -391,17 +428,18 @@ export const agentSlice: StateCreator<ChatStore, [['zustand/devtools', never]], 
       );
 
       // 创建流式连接
+      log(`Creating stream connection for session ${sessionResponse.sessionId}`);
       const eventSource = agentClientService.createStreamConnection(sessionResponse.sessionId, {
         includeHistory: true,
         onConnect: () => {
-          console.log(`[Agent Runtime] Stream connected for ${agentMessageId}`);
+          log(`Stream connected for ${agentMessageId}`);
         },
         onDisconnect: () => {
-          console.log(`[Agent Runtime] Stream disconnected for ${agentMessageId}`);
+          log(`Stream disconnected for ${agentMessageId}`);
           get().internal_cleanupAgentSession(agentMessageId);
         },
         onError: (error: Error) => {
-          console.error(`[Agent Runtime] Stream error for ${agentMessageId}:`, error);
+          log(`Stream error for ${agentMessageId}:`, error);
           get().internal_handleAgentError(agentMessageId, error.message);
         },
         onEvent: async (event: StreamEvent) => {
@@ -420,7 +458,7 @@ export const agentSlice: StateCreator<ChatStore, [['zustand/devtools', never]], 
         n('saveAgentEventSource', { assistantId: agentMessageId }),
       );
     } catch (error) {
-      console.error(`[Agent Runtime] Failed to start agent session for ${agentMessageId}:`, error);
+      log(`Failed to start agent session for ${agentMessageId}:`, error);
 
       // 更新错误状态
       await messageService.updateMessageError(agentMessageId, {
