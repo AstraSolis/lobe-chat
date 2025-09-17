@@ -214,14 +214,12 @@ describe('AgentStateManager', () => {
 
       expect(mockPipeline.ltrim).toHaveBeenCalledWith('agent_runtime_steps:test-session-1', 0, 199);
 
-      expect(mockPipeline.hmset).toHaveBeenCalledWith(
-        'agent_runtime_meta:test-session-1',
-        expect.objectContaining({
-          status: 'running',
-          totalCost: 0.05,
-          totalSteps: 2,
-        }),
-      );
+      expect(mockPipeline.hmset).toHaveBeenCalledWith('agent_runtime_meta:test-session-1', {
+        lastActiveAt: expect.any(String),
+        status: 'running',
+        totalCost: 0.05,
+        totalSteps: 2,
+      });
 
       expect(mockPipeline.exec).toHaveBeenCalled();
     });
