@@ -96,6 +96,7 @@ export default {
   groupWizard: {
     chooseMembers: '选择现有助手...',
     createGroup: '创建群聊',
+    existingMembers: '已有助手',
     groupMembers: '这些助手也将被添加到您的列表中',
     host: {
       description: '使群聊自动化运行',
@@ -104,8 +105,10 @@ export default {
     memberCount: '{{count}} 个成员',
     noMatchingTemplates: '没有匹配的模板',
     noSelectedTemplates: '没有选择模板',
+    noTemplateMembers: '模板中没有成员',
     noTemplates: '没有可用的模板',
     searchTemplates: '搜索模板...',
+    useTemplate: '使用模板',
     title: '创建群聊',
   },
 

@@ -1,33 +1,41 @@
 'use client';
 
-import { ActionIcon, Avatar, GroupAvatar, List, Modal, Text } from '@lobehub/ui';
+import {
+  ActionIcon,
+  Avatar,
+  Collapse,
+  GroupAvatar,
+  List,
+  Modal,
+  SearchBar,
+  Text,
+} from '@lobehub/ui';
 import { Button, Checkbox, Empty } from 'antd';
-import { createStyles } from 'antd-style';
+import { createStyles, useTheme } from 'antd-style';
 import { Users, X } from 'lucide-react';
-import { memo, useCallback, useMemo, useRef, useState } from 'react';
+import { ChangeEvent, memo, useCallback, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Flexbox } from 'react-layout-kit';
 
-import { MemberSelectionModal } from '@/components/MemberSelectionModal';
-import { DEFAULT_AVATAR } from '@/const/meta';
+import { DEFAULT_AVATAR, DEFAULT_ORCHESTRATOR_AVATAR } from '@/const/meta';
 import ModelSelect from '@/features/ModelSelect';
 import { useEnabledChatModels } from '@/hooks/useEnabledChatModels';
+import { useSessionStore } from '@/store/session';
+import { LobeAgentSession, LobeSessionType } from '@/types/session';
 
-import { useGroupTemplates } from './templates';
+import { GroupTemplate, useGroupTemplates } from './templates';
 
 const TemplateItem = memo<{
-  cx: any;
+  cx: (...args: any[]) => string;
   isSelected: boolean;
-  // eslint-disable-next-line unused-imports/no-unused-vars
   onToggle: (templateId: string) => void;
-  styles: any;
-  t: any;
-  template: any;
-}>(({ template, isSelected, onToggle, styles, cx, t }) => {
-  const ref = useRef(null);
+  styles: Record<string, string>;
+  template: GroupTemplate;
+}>(({ template, isSelected, onToggle, styles, cx }) => {
+  const { t } = useTranslation('chat');
 
   return (
-    <div className={cx(styles.listItem)} onClick={() => onToggle(template.id)} ref={ref}>
+    <div className={cx(styles.listItem)} onClick={() => onToggle(template.id)}>
       <Flexbox align="center" gap={12} horizontal width="100%">
         <Checkbox
           checked={isSelected}
@@ -35,7 +43,7 @@ const TemplateItem = memo<{
           onClick={(e) => e.stopPropagation()}
         />
         <GroupAvatar
-          avatars={template.members.map((member: any) => ({
+          avatars={template.members.map((member) => ({
             avatar: member.avatar || DEFAULT_AVATAR,
             background: member.backgroundColor || undefined,
           }))}
@@ -60,17 +68,62 @@ const TemplateItem = memo<{
   );
 });
 
+const ExistingMemberItem = memo<{
+  agent: LobeAgentSession;
+  cx: (...args: any[]) => string;
+  isSelected: boolean;
+  onToggle: (agentId: string) => void;
+  styles: Record<string, string>;
+}>(({ agent, isSelected, onToggle, styles, cx }) => {
+  const { t } = useTranslation(['chat', 'common']);
+  const agentId = agent.config?.id;
+  const title = agent.meta?.title || t('defaultSession', { ns: 'common' });
+  const description = agent.meta?.description || '';
+  const avatar = agent.meta?.avatar || DEFAULT_AVATAR;
+  const avatarBackground = agent.meta?.backgroundColor;
+
+  if (!agentId) return null;
+
+  return (
+    <div className={cx(styles.listItem)} onClick={() => onToggle(agentId)}>
+      <Flexbox align="center" gap={12} horizontal width="100%">
+        <Checkbox
+          checked={isSelected}
+          onChange={() => onToggle(agentId)}
+          onClick={(e) => e.stopPropagation()}
+        />
+        <Avatar avatar={avatar} background={avatarBackground} shape="circle" size={40} />
+        <Flexbox flex={1} gap={2} style={{ minWidth: 0 }}>
+          <Text className={styles.title}>{title}</Text>
+          {description && (
+            <Text className={styles.description} ellipsis>
+              {description}
+            </Text>
+          )}
+        </Flexbox>
+      </Flexbox>
+    </div>
+  );
+});
+
 const useStyles = createStyles(({ css, token }) => ({
   container: css`
     display: flex;
     flex-direction: row;
     height: 500px;
-    // border: 1px solid ${token.colorBorderSecondary};
+    border: 1px solid ${token.colorBorderSecondary};
+    border-radius: ${token.borderRadius}px;
   `,
   description: css`
     font-size: 12px;
     line-height: 1.2;
     color: ${token.colorTextSecondary};
+  `,
+  hostCard: css`
+    border: 1px solid ${token.colorBorderSecondary};
+    border-radius: ${token.borderRadiusLG}px;
+    padding: ${token.padding}px;
+    background: ${token.colorFillTertiary};
   `,
   leftColumn: css`
     user-select: none;
@@ -81,6 +134,10 @@ const useStyles = createStyles(({ css, token }) => ({
     padding-block: ${token.paddingSM}px 0;
     padding-inline: ${token.paddingSM}px;
     border-right: 1px solid ${token.colorBorderSecondary};
+  `,
+  listHeader: css`
+    color: ${token.colorTextDescription};
+    padding: 0;
   `,
   listItem: css`
     cursor: pointer;
@@ -97,30 +154,16 @@ const useStyles = createStyles(({ css, token }) => ({
       background: ${token.colorFillTertiary};
     }
   `,
+  memberDescription: css`
+    display: block;
+    padding-right: 48px;
+  `,
   rightColumn: css`
     overflow-y: auto;
     display: flex;
     flex: 1;
     flex-direction: column;
 
-    padding: ${token.paddingSM}px;
-  `,
-  settingsPanel: css`
-    padding: ${token.paddingSM}px;
-    background: ${token.colorBgContainer};
-  `,
-  templateCard: css`
-    cursor: pointer;
-    border: 1px solid ${token.colorBorderSecondary};
-    transition: all 0.2s ease;
-
-    &:hover {
-      background: ${token.colorFillTertiary};
-    }
-  `,
-  templateList: css`
-    overflow-y: auto;
-    flex: 1;
     padding: ${token.paddingSM}px;
   `,
   title: css`
@@ -158,18 +201,23 @@ const ChatGroupWizard = memo<ChatGroupWizardProps>(
   }) => {
     const { t } = useTranslation(['chat', 'common']);
     const { styles, cx } = useStyles();
+    const theme = useTheme();
     const groupTemplates = useGroupTemplates();
     const enabledModels = useEnabledChatModels();
+    const agentSessions = useSessionStore((s) =>
+      (s.sessions || []).filter((session) => session.type === LobeSessionType.Agent),
+    );
 
-    // Get default model from the first enabled provider's first model
+    const memberDescriptionClass = useMemo(
+      () => cx(styles.description, styles.memberDescription),
+      [cx, styles.description, styles.memberDescription],
+    );
+
     const defaultModel = useMemo(() => {
       if (enabledModels.length > 0 && enabledModels[0].children.length > 0) {
-        console.log('Enabled models:', enabledModels);
-
         const firstProvider = enabledModels[0];
         const firstModel = firstProvider.children[0];
 
-        console.log('First model:', firstModel);
         return {
           model: firstModel.id,
           provider: firstProvider.id,
@@ -178,32 +226,51 @@ const ChatGroupWizard = memo<ChatGroupWizardProps>(
       return { model: undefined, provider: undefined };
     }, [enabledModels]);
 
-    const [isMemberSelectionOpen, setIsMemberSelectionOpen] = useState(false);
     const [searchTerm, setSearchTerm] = useState('');
     const [selectedTemplate, setSelectedTemplate] = useState<string>('');
+    const [selectedAgents, setSelectedAgents] = useState<string[]>([]);
     const [removedMembers, setRemovedMembers] = useState<Record<string, string[]>>({});
     const [isHostRemoved, setIsHostRemoved] = useState(false);
     const [hostModelConfig, setHostModelConfig] = useState<{ model?: string; provider?: string }>(
       defaultModel,
     );
+    const [isCreatingCustom, setIsCreatingCustom] = useState(false);
+    const [activePanel, setActivePanel] = useState<'templates' | 'agents'>('templates');
 
-    // Use external loading state if provided, otherwise use internal state
     const isCreatingFromTemplate = externalLoading ?? false;
 
-    const handleTemplateToggle = (templateId: string) => {
+    const handleTemplateToggle = useCallback((templateId: string) => {
       setSelectedTemplate((prev) => {
-        const newTemplate = prev === templateId ? '' : templateId;
-        // Clear removed members and reset host when switching to a different template
-        if (newTemplate !== prev) {
+        const next = prev === templateId ? '' : templateId;
+
+        if (next !== prev) {
           setRemovedMembers({});
           setIsHostRemoved(false);
         }
-        return newTemplate;
+
+        if (next) {
+          setSelectedAgents([]);
+        }
+
+        return next;
       });
-    };
+    }, []);
+
+    const handleAgentToggle = useCallback((agentId: string) => {
+      setSelectedTemplate('');
+      setRemovedMembers({});
+      setSelectedAgents((prev) =>
+        prev.includes(agentId) ? prev.filter((id) => id !== agentId) : [...prev, agentId],
+      );
+    }, []);
+
+    const handleRemoveAgent = useCallback((agentId: string) => {
+      setSelectedAgents((prev) => prev.filter((id) => id !== agentId));
+    }, []);
 
     const handleReset = () => {
       setSelectedTemplate('');
+      setSelectedAgents([]);
       setSearchTerm('');
       setRemovedMembers({});
       setIsHostRemoved(false);
@@ -211,7 +278,6 @@ const ChatGroupWizard = memo<ChatGroupWizardProps>(
     };
 
     const handleHostModelChange = useCallback((config: { model?: string; provider?: string }) => {
-      console.log('Host model changed to:', config);
       setHostModelConfig(config);
     }, []);
 
@@ -226,66 +292,54 @@ const ChatGroupWizard = memo<ChatGroupWizardProps>(
       setIsHostRemoved(true);
     }, []);
 
-    const handleTemplateConfirm = async () => {
-      if (!selectedTemplate) return;
+    const handleSearchChange = useCallback((event: ChangeEvent<HTMLInputElement>) => {
+      setSearchTerm(event.target.value);
+    }, []);
 
-      // If using external loading state, don't manage loading internally
-      if (externalLoading !== undefined) {
-        console.log(
-          'ChatGroupWizard: Creating from template with hostModelConfig:',
-          hostModelConfig,
-          'enableSupervisor:',
-          !isHostRemoved,
-        );
-        await onCreateFromTemplate(selectedTemplate, hostModelConfig, !isHostRemoved);
-        // Reset will be handled by parent after successful creation
-        handleReset();
-      } else {
-        // Fallback for backwards compatibility
-        try {
-          await onCreateFromTemplate(selectedTemplate, hostModelConfig, !isHostRemoved);
-          handleReset();
-        } catch (error) {
-          console.error('Failed to create group from template:', error);
-        }
+    const agentCount = agentSessions.length;
+
+    useEffect(() => {
+      if (!open) return;
+
+      setActivePanel(agentCount > 2 ? 'agents' : 'templates');
+    }, [open, agentCount]);
+
+    const handlePanelChange = useCallback((key: string | string[]) => {
+      if (!key) return;
+
+      const nextKey = Array.isArray(key) ? key[0] : key;
+
+      if (nextKey === 'templates' || nextKey === 'agents') {
+        setActivePanel(nextKey);
       }
-    };
+    }, []);
 
-    const handleCustomCreate = () => {
-      onCancel(); // Close the wizard modal first
-      // Use setTimeout to ensure modal close animation completes before opening new modal
-      setTimeout(() => {
-        setIsMemberSelectionOpen(true);
-      }, 100);
-    };
-
-    const handleMemberSelectionCancel = () => {
-      setIsMemberSelectionOpen(false);
-    };
-
-    const handleMemberSelectionConfirm = async (selectedAgents: string[]) => {
-      setIsMemberSelectionOpen(false);
-      console.log(
-        'ChatGroupWizard: Creating custom with hostModelConfig:',
-        hostModelConfig,
-        'enableSupervisor:',
-        !isHostRemoved,
-      );
-      await onCreateCustom(selectedAgents, hostModelConfig, !isHostRemoved);
-    };
-
-    // Filter templates based on search term
     const filteredTemplates = useMemo(() => {
-      if (!searchTerm.trim()) return groupTemplates;
+      const searchLower = searchTerm.trim().toLowerCase();
+      if (!searchLower) return groupTemplates;
 
       return groupTemplates.filter((template) => {
-        const searchLower = searchTerm.toLowerCase();
+        if (template.title.toLowerCase().includes(searchLower)) return true;
+        if (template.description.toLowerCase().includes(searchLower)) return true;
+
+        return template.members.some((member) => member.title.toLowerCase().includes(searchLower));
+      });
+    }, [groupTemplates, searchTerm]);
+
+    const filteredAgents = useMemo(() => {
+      const searchLower = searchTerm.trim().toLowerCase();
+      if (!searchLower) return agentSessions;
+
+      return agentSessions.filter((agent) => {
+        const title = agent.meta?.title || '';
+        const description = agent.meta?.description || '';
+
         return (
-          template.title.toLowerCase().includes(searchLower) ||
-          template.description.toLowerCase().includes(searchLower)
+          title.toLowerCase().includes(searchLower) ||
+          description.toLowerCase().includes(searchLower)
         );
       });
-    }, [searchTerm]);
+    }, [agentSessions, searchTerm]);
 
     const selectedTemplateMembers = useMemo(() => {
       if (!selectedTemplate) return [];
@@ -300,133 +354,251 @@ const ChatGroupWizard = memo<ChatGroupWizardProps>(
         .map((member) => ({
           avatar: member.avatar || DEFAULT_AVATAR,
           backgroundColor: member.backgroundColor,
-          description: template.title,
+          description: member.systemRole,
           key: `${selectedTemplate}-${member.title}`,
           systemRole: member.systemRole,
           title: member.title,
         }));
     }, [selectedTemplate, removedMembers, groupTemplates]);
 
+    const selectedAgentListItems = useMemo(() => {
+      return selectedAgents
+        .map((agentId) => {
+          const agent = agentSessions.find((session) => session.config?.id === agentId);
+          if (!agent) return null;
+
+          const title = agent.meta?.title || t('defaultSession', { ns: 'common' });
+          const avatar = agent.meta?.avatar || DEFAULT_AVATAR;
+          const avatarBackground = agent.meta?.backgroundColor;
+          const description = agent.meta?.description || '';
+
+          return {
+            actions: (
+              <ActionIcon
+                icon={X}
+                onClick={() => handleRemoveAgent(agentId)}
+                size="small"
+                style={{ color: '#999' }}
+              />
+            ),
+            avatar: (
+              <Avatar avatar={avatar} background={avatarBackground} shape="circle" size={40} />
+            ),
+            description: description ? (
+              <Text className={memberDescriptionClass} ellipsis={{ rows: 1 }}>
+                {description}
+              </Text>
+            ) : null,
+            key: agentId,
+            showAction: true,
+            title,
+          };
+        })
+        .filter((item): item is NonNullable<typeof item> => Boolean(item));
+    }, [selectedAgents, agentSessions, t, handleRemoveAgent, memberDescriptionClass]);
+
+    const handleTemplateConfirm = useCallback(async () => {
+      if (!selectedTemplate) return;
+
+      try {
+        await onCreateFromTemplate(selectedTemplate, hostModelConfig, !isHostRemoved);
+        handleReset();
+      } catch (error) {
+        console.error('Failed to create group from template:', error);
+      }
+    }, [selectedTemplate, onCreateFromTemplate, hostModelConfig, isHostRemoved]);
+
+    const handleCustomConfirm = useCallback(async () => {
+      if (selectedAgents.length === 0) return;
+
+      try {
+        setIsCreatingCustom(true);
+        await onCreateCustom(selectedAgents, hostModelConfig, !isHostRemoved);
+        handleReset();
+        onCancel();
+      } catch (error) {
+        console.error('Failed to create group with selected members:', error);
+      } finally {
+        setIsCreatingCustom(false);
+      }
+    }, [selectedAgents, onCreateCustom, hostModelConfig, isHostRemoved, onCancel]);
+
+    const handleConfirm = useCallback(async () => {
+      if (selectedTemplate) {
+        await handleTemplateConfirm();
+        return;
+      }
+
+      await handleCustomConfirm();
+    }, [selectedTemplate, handleTemplateConfirm, handleCustomConfirm]);
+
     const handleCancel = () => {
       handleReset();
       onCancel();
     };
 
+    const confirmDisabled = selectedTemplate
+      ? selectedTemplateMembers.length === 0 && isHostRemoved
+      : selectedAgents.length === 0;
+
+    const confirmLoading = selectedTemplate ? isCreatingFromTemplate : isCreatingCustom;
+
+    const hasAnySelection = selectedTemplate
+      ? selectedTemplateMembers.length > 0 || !isHostRemoved
+      : selectedAgentListItems.length > 0 || !isHostRemoved;
+
     return (
-      <>
-        <Modal
-          footer={
-            <Flexbox gap={8} horizontal justify="space-between">
-              <Button onClick={handleCustomCreate} type="default">
-                {t('groupWizard.chooseMembers')}
-              </Button>
-              <Flexbox gap={8} horizontal>
-                <Button onClick={handleCancel}>{t('cancel', { ns: 'common' })}</Button>
-                <Button
-                  disabled={!selectedTemplate}
-                  loading={isCreatingFromTemplate}
-                  onClick={handleTemplateConfirm}
-                  type="primary"
-                >
-                  {t('groupWizard.createGroup')}
-                </Button>
-              </Flexbox>
-            </Flexbox>
-          }
-          onCancel={handleCancel}
-          open={open}
-          title={t('groupWizard.title')}
-          width={800}
-        >
-          <Flexbox className={styles.container} horizontal>
-            {/* Left Column - Templates */}
-            <Flexbox className={styles.leftColumn} flex={1} gap={12}>
-              <Flexbox flex={1} style={{ overflowY: 'auto' }}>
-                {filteredTemplates.length === 0 ? (
-                  <Empty
-                    description={
-                      searchTerm
-                        ? t('groupWizard.noMatchingTemplates')
-                        : t('groupWizard.noTemplates')
-                    }
-                    image={Empty.PRESENTED_IMAGE_SIMPLE}
-                  />
-                ) : (
-                  <div>
-                    {filteredTemplates.map((template) => {
-                      const isSelected = selectedTemplate === template.id;
-
-                      return (
-                        <TemplateItem
-                          cx={cx}
-                          isSelected={isSelected}
-                          key={template.id}
-                          onToggle={handleTemplateToggle}
-                          styles={styles}
-                          t={t}
-                          template={template}
+      <Modal
+        footer={
+          <Flexbox gap={8} horizontal justify="end">
+            <Button onClick={handleCancel}>{t('cancel', { ns: 'common' })}</Button>
+            <Button
+              disabled={confirmDisabled}
+              loading={confirmLoading}
+              onClick={handleConfirm}
+              type="primary"
+            >
+              {t('groupWizard.createGroup')}
+            </Button>
+          </Flexbox>
+        }
+        onCancel={handleCancel}
+        open={open}
+        title={t('groupWizard.title')}
+        width={900}
+      >
+        <Flexbox className={styles.container} horizontal>
+          <Flexbox className={styles.leftColumn} flex={1} gap={12}>
+            <SearchBar
+              allowClear
+              onChange={handleSearchChange}
+              placeholder={t('memberSelection.searchAgents')}
+              value={searchTerm}
+              variant="filled"
+            />
+            <Flexbox flex={1} style={{ overflowY: 'auto' }}>
+              <Collapse
+                accordion
+                collapsible
+                activeKey={activePanel}
+                expandIconPosition="end"
+                gap={12}
+                items={[
+                  {
+                    children:
+                      filteredTemplates.length === 0 ? (
+                        <Empty
+                          description={
+                            searchTerm
+                              ? t('groupWizard.noMatchingTemplates')
+                              : t('groupWizard.noTemplates')
+                          }
+                          image={Empty.PRESENTED_IMAGE_SIMPLE}
                         />
-                      );
-                    })}
-                  </div>
-                )}
-              </Flexbox>
+                      ) : (
+                        <Flexbox gap={4}>
+                          {filteredTemplates.map((template) => (
+                            <TemplateItem
+                              cx={cx}
+                              isSelected={selectedTemplate === template.id}
+                              key={template.id}
+                              onToggle={handleTemplateToggle}
+                              styles={styles}
+                              template={template}
+                            />
+                          ))}
+                        </Flexbox>
+                      ),
+                    key: 'templates',
+                    label: t('groupWizard.useTemplate'),
+                  },
+                  {
+                    children:
+                      filteredAgents.length === 0 ? (
+                        <Empty
+                          description={
+                            searchTerm
+                              ? t('noMatchingAgents', { ns: 'chat' })
+                              : t('noAvailableAgents', { ns: 'chat' })
+                          }
+                          image={Empty.PRESENTED_IMAGE_SIMPLE}
+                        />
+                      ) : (
+                        <Flexbox gap={4}>
+                          {filteredAgents.map((agent) => (
+                            <ExistingMemberItem
+                              agent={agent}
+                              cx={cx}
+                              isSelected={selectedAgents.includes(agent.config?.id || '')}
+                              key={agent.id}
+                              onToggle={handleAgentToggle}
+                              styles={styles}
+                            />
+                          ))}
+                        </Flexbox>
+                      ),
+                    key: 'agents',
+                    label: t('groupWizard.existingMembers'),
+                  },
+                ]}
+                size="small"
+                onChange={handlePanelChange}
+                styles={{
+                  header: {
+                    color: theme.colorTextDescription,
+                    fontSize: theme.fontSize,
+                    padding: 0,
+                  },
+                }}
+                variant="borderless"
+              />
             </Flexbox>
+          </Flexbox>
 
-            {/* Right Column - Group Members */}
-            <Flexbox className={styles.rightColumn} flex={1}>
-              {!selectedTemplate ? (
-                <Flexbox align="center" flex={1} justify="center">
-                  <Empty
-                    description={t('groupWizard.noSelectedTemplates')}
-                    image={Empty.PRESENTED_IMAGE_SIMPLE}
-                  />
-                </Flexbox>
-              ) : (
-                <Flexbox flex={1} style={{ overflowY: 'auto' }}>
-                  {/* Host Item */}
-                  {!isHostRemoved && (
-                    <Flexbox
-                      align="center"
-                      gap={12}
-                      horizontal
-                      justify="center"
-                      padding={16}
-                      style={{
-                        marginBottom: 16,
-                      }}
-                    >
-                      <Avatar avatar="🎙️" shape="circle" size={40} />
-                      <Flexbox flex={1} gap={2}>
-                        <Text style={{ fontSize: 14, fontWeight: 500 }}>
-                          {t('groupWizard.host.title')}
-                        </Text>
-                        <Text style={{ color: '#999', fontSize: 12 }}>
-                          {t('groupWizard.host.description')}
-                        </Text>
-                      </Flexbox>
-                      <ModelSelect
-                        onChange={handleHostModelChange}
-                        value={{
-                          model: hostModelConfig.model || defaultModel.model!,
-                          provider: hostModelConfig.provider || defaultModel.provider!,
-                        }}
-                      />
-                      <ActionIcon
-                        icon={X}
-                        onClick={handleRemoveHost}
-                        size="small"
-                        style={{ color: '#999' }}
-                      />
-                    </Flexbox>
-                  )}
-
-                  {selectedTemplateMembers.length > 0 && (
-                    <>
-                      <Text style={{ marginBottom: 16, textAlign: 'center' }} type="secondary">
-                        {t('groupWizard.groupMembers')}
+          <Flexbox className={styles.rightColumn} flex={1}>
+            {!hasAnySelection ? (
+              <Flexbox align="center" flex={1} justify="center">
+                <Empty
+                  description={
+                    selectedTemplate
+                      ? t('groupWizard.noSelectedTemplates')
+                      : t('memberSelection.noSelectedAgents')
+                  }
+                  image={Empty.PRESENTED_IMAGE_SIMPLE}
+                />
+              </Flexbox>
+            ) : (
+              <Flexbox flex={1} gap={16} style={{ overflowY: 'auto' }}>
+                {!isHostRemoved && (
+                  <Flexbox align="center" className={styles.hostCard} gap={12} horizontal>
+                    <Avatar avatar={DEFAULT_ORCHESTRATOR_AVATAR} shape="circle" size={40} />
+                    <Flexbox flex={1} gap={2}>
+                      <Text style={{ fontSize: 14, fontWeight: 500 }}>
+                        {t('groupWizard.host.title')}
                       </Text>
+                      <Text style={{ color: '#999', fontSize: 12 }}>
+                        {t('groupWizard.host.description')}
+                      </Text>
+                    </Flexbox>
+                    <ModelSelect
+                      onChange={handleHostModelChange}
+                      value={{
+                        model: hostModelConfig.model || defaultModel.model!,
+                        provider: hostModelConfig.provider || defaultModel.provider!,
+                      }}
+                    />
+                    <ActionIcon
+                      icon={X}
+                      onClick={handleRemoveHost}
+                      size="small"
+                      style={{ color: '#999' }}
+                    />
+                  </Flexbox>
+                )}
 
+                {selectedTemplate ? (
+                  <>
+                    {selectedTemplateMembers.length > 0 ? (
                       <List
                         items={selectedTemplateMembers.map((member) => ({
                           actions: (
@@ -445,27 +617,31 @@ const ChatGroupWizard = memo<ChatGroupWizardProps>(
                               size={40}
                             />
                           ),
-                          description: member.systemRole,
+                          description: member.systemRole ? (
+                            <Text className={memberDescriptionClass} ellipsis={{ rows: 1 }}>
+                              {member.systemRole}
+                            </Text>
+                          ) : null,
                           key: member.key,
                           showAction: true,
                           title: member.title,
                         }))}
                       />
-                    </>
-                  )}
-                </Flexbox>
-              )}
-            </Flexbox>
+                    ) : (
+                      <Empty
+                        description={t('groupWizard.noTemplateMembers')}
+                        image={Empty.PRESENTED_IMAGE_SIMPLE}
+                      />
+                    )}
+                  </>
+                ) : selectedAgentListItems.length > 0 ? (
+                  <List items={selectedAgentListItems} />
+                ) : null}
+              </Flexbox>
+            )}
           </Flexbox>
-        </Modal>
-
-        <MemberSelectionModal
-          mode="create"
-          onCancel={handleMemberSelectionCancel}
-          onConfirm={handleMemberSelectionConfirm}
-          open={isMemberSelectionOpen}
-        />
-      </>
+        </Flexbox>
+      </Modal>
     );
   },
 );

@@ -34,6 +34,7 @@ const GroupMember = memo<GroupMemberProps>(
     const removeAgentFromGroup = useChatGroupStore((s) => s.removeAgentFromGroup);
     const persistReorder = useChatGroupStore((s) => s.reorderGroupMembers);
     const toggleThread = useChatGroupStore((s) => s.toggleThread);
+    const updateGroupConfig = useChatGroupStore((s) => s.updateGroupConfig);
     const togglePortal = useChatStore((s) => s.togglePortal);
     const cancelSupervisorDecision = useChatStore((s) => s.internal_cancelSupervisorDecision);
     const triggerSupervisorDecision = useChatStore((s) => s.internal_triggerSupervisorDecision);
@@ -65,6 +66,15 @@ const GroupMember = memo<GroupMemberProps>(
 
     const [removingMemberIds, setRemovingMemberIds] = useState<string[]>([]);
 
+    const withRemovingFlag = async (id: string, task: () => Promise<void>) => {
+      setRemovingMemberIds((prev) => (prev.includes(id) ? prev : [...prev, id]));
+      try {
+        await task();
+      } finally {
+        setRemovingMemberIds((prev) => prev.filter((memberId) => memberId !== id));
+      }
+    };
+
     useEffect(() => {
       setMembers(initialMembers);
     }, [initialMembers]);
@@ -72,12 +82,7 @@ const GroupMember = memo<GroupMemberProps>(
     const handleRemoveMember = async (memberId: string) => {
       if (!sessionId) return;
 
-      setRemovingMemberIds((prev) => [...prev, memberId]);
-      try {
-        await removeAgentFromGroup(sessionId, memberId);
-      } finally {
-        setRemovingMemberIds((prev) => prev.filter((id) => id !== memberId));
-      }
+      await withRemovingFlag(memberId, () => removeAgentFromGroup(sessionId, memberId));
     };
 
     const handleMemberClick = (agentId: string) => {
@@ -111,6 +116,21 @@ const GroupMember = memo<GroupMemberProps>(
           {/* Orchestrator - only show if supervisor is enabled */}
           {groupConfig?.enableSupervisor && (
             <GroupMemberItem
+              actions={
+                <ActionIcon
+                  danger
+                  icon={UserMinus}
+                  loading={removingMemberIds.includes('orchestrator')}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    void withRemovingFlag('orchestrator', () =>
+                      updateGroupConfig({ enableSupervisor: false }),
+                    );
+                  }}
+                  size={'small'}
+                  title={t('groupSidebar.members.removeMember')}
+                />
+              }
               avatar={'🎙️'}
               generating={isSupervisorLoading}
               generatingTooltip={t('groupSidebar.members.orchestratorThinking')}
@@ -129,13 +149,33 @@ const GroupMember = memo<GroupMemberProps>(
           {!groupConfig?.enableSupervisor && (() => {
             const hostMember = currentSession?.members?.find((member: GroupMemberWithAgent) => member.role === 'host');
             if (hostMember) {
+              const hostId = hostMember.id || 'host';
+              const removing = removingMemberIds.includes(hostId);
+
+              const handleRemoveHost = async () => {
+                await withRemovingFlag(hostId, () => updateGroupConfig({ enableSupervisor: true }));
+              };
+
               return (
                 <GroupMemberItem
+                  actions={
+                    <ActionIcon
+                      danger
+                      icon={UserMinus}
+                      loading={removing}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        void handleRemoveHost();
+                      }}
+                      size={'small'}
+                      title={t('groupSidebar.members.removeMember')}
+                    />
+                  }
                   avatar={hostMember.avatar || DEFAULT_AVATAR}
                   background={hostMember.backgroundColor}
-                  id={hostMember.id || 'host'}
+                  id={hostId}
                   pin
-                  showActionsOnHover={false}
+                  showActionsOnHover
                   title={`${hostMember.title || 'Host'} (Host)`}
                 />
               );
