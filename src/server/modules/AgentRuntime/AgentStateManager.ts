@@ -27,13 +27,17 @@ export interface AgentSessionMetadata {
 
 export class AgentStateManager {
   private redis: Redis;
-  private readonly STATE_PREFIX = 'agent_state';
-  private readonly STEPS_PREFIX = 'agent_steps';
-  private readonly METADATA_PREFIX = 'agent_meta';
+  private readonly STATE_PREFIX = 'agent_runtime_state';
+  private readonly STEPS_PREFIX = 'agent_runtime_steps';
+  private readonly METADATA_PREFIX = 'agent_runtime_meta';
   private readonly DEFAULT_TTL = 7 * 24 * 3600; // 7 天
 
   constructor() {
-    this.redis = getRedisClient();
+    const redisClient = getRedisClient();
+    if (!redisClient) {
+      throw new Error('Redis is not available. Please configure REDIS_URL environment variable.');
+    }
+    this.redis = redisClient;
   }
 
   /**

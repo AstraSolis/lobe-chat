@@ -69,29 +69,29 @@ export interface PendingInterventionsResult {
   pendingInterventions: Array<{
     lastModified: string;
     modelConfig?: any;
+    pendingHumanPrompt?: any;
+    pendingHumanSelect?: any;
+    pendingToolsCalling?: any[];
     sessionId: string;
     status: string;
     stepCount: number;
     type: 'tool_approval' | 'human_prompt' | 'human_select';
     userId?: string;
-    pendingToolsCalling?: any[];
-    pendingHumanPrompt?: any;
-    pendingHumanSelect?: any;
   }>;
   timestamp: string;
   totalCount: number;
 }
 
 export interface StartExecutionParams {
-  sessionId: string;
   context?: RuntimeContext;
-  priority?: 'high' | 'normal' | 'low';
   delay?: number;
+  priority?: 'high' | 'normal' | 'low';
+  sessionId: string;
 }
 
 export interface StartExecutionResult {
   messageId: string;
-  sessionId: string;
   scheduled: boolean;
+  sessionId: string;
   success: boolean;
 }

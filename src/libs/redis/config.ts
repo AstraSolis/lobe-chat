@@ -1,11 +1,11 @@
 /**
  * Get Redis URL from environment variables
  */
-export const getRedisUrl = (): string => {
+export const getRedisUrl = (): string | undefined => {
   const redisUrl = process.env.REDIS_URL;
 
   if (!redisUrl) {
-    throw new Error('REDIS_URL environment variable is required');
+    return undefined;
   }
 
   return redisUrl;

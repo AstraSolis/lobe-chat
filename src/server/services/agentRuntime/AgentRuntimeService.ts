@@ -39,7 +39,7 @@ export class AgentRuntimeService {
     this.stateManager = new AgentStateManager();
     this.streamManager = new StreamEventManager();
     this.queueService = new QueueService();
-    this.baseURL = process.env.AGENT_RUNTIME_BASE_URL || 'http://localhost:3000/api/agent';
+    this.baseURL = process.env.AGENT_RUNTIME_BASE_URL || 'http://localhost:3010/api/agent';
   }
 
   /**

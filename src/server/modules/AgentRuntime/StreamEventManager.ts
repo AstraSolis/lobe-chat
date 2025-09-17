@@ -29,7 +29,11 @@ export class StreamEventManager {
   private readonly STREAM_RETENTION = 3600; // 1小时
 
   constructor() {
-    this.redis = getRedisClient();
+    const redisClient = getRedisClient();
+    if (!redisClient) {
+      throw new Error('Redis is not available. Please configure REDIS_URL environment variable.');
+    }
+    this.redis = redisClient;
   }
 
   /**

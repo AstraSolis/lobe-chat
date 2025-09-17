@@ -8,8 +8,13 @@ const log = debug('redis:client');
 /**
  * 创建 Redis 客户端实例
  */
-export function createRedisClient(url?: string): Redis {
+export const createRedisClient = (url?: string): Redis | null => {
   const redisUrl = url || getRedisUrl();
+
+  if (!redisUrl) {
+    console.warn('[Redis Client] No Redis URL available. Redis features are disabled.');
+    return null;
+  }
 
   const client = new Redis(redisUrl, {
     maxRetriesPerRequest: 3,
@@ -28,19 +33,21 @@ export function createRedisClient(url?: string): Redis {
   });
 
   return client;
-}
+};
 
 /**
  * 全局 Redis 客户端实例（单例模式）
  */
 let globalRedisClient: Redis | null = null;
+let redisInitialized = false;
 
 /**
  * 获取全局 Redis 客户端实例
  */
-export function getRedisClient(): Redis {
-  if (!globalRedisClient) {
+export function getRedisClient(): Redis | null {
+  if (!redisInitialized) {
     globalRedisClient = createRedisClient();
+    redisInitialized = true;
   }
   return globalRedisClient;
 }
@@ -52,5 +59,6 @@ export async function closeRedisClient(): Promise<void> {
   if (globalRedisClient) {
     await globalRedisClient.quit();
     globalRedisClient = null;
+    redisInitialized = false;
   }
 }

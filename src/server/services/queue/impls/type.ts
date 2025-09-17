@@ -20,12 +20,12 @@ export interface QueueServiceImpl {
   healthCheck(): Promise<HealthCheckResult>;
 
   /**
-   * Schedule a message to the queue
-   */
-  scheduleMessage(message: QueueMessage): Promise<string>;
-
-  /**
    * Schedule multiple messages to the queue
    */
   scheduleBatchMessages(messages: QueueMessage[]): Promise<string[]>;
+
+  /**
+   * Schedule a message to the queue
+   */
+  scheduleMessage(message: QueueMessage): Promise<string>;
 }
