@@ -1,4 +1,4 @@
-import { AgentEvent, AgentState, RuntimeContext } from '@lobechat/agent-runtime';
+import { AgentState, RuntimeContext } from '@lobechat/agent-runtime';
 import debug from 'debug';
 import Redis from 'ioredis';
 
@@ -7,7 +7,6 @@ import { getRedisClient } from '@/libs/redis';
 const log = debug('lobe-server:agent-runtime:agent-state-manager');
 
 export interface StepResult {
-  events: AgentEvent[];
   executionTime: number;
   newState: AgentState;
   nextContext?: RuntimeContext;
@@ -104,7 +103,6 @@ export class AgentStateManager {
       const stepData = {
         context: stepResult.nextContext,
         cost: stepResult.newState.cost?.total || 0,
-        events: stepResult.events,
         executionTime: stepResult.executionTime,
         status: stepResult.newState.status,
         stepIndex: stepResult.stepIndex,

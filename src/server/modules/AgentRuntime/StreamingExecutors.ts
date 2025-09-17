@@ -81,14 +81,12 @@ export function createStreamingLLMExecutor(ctx: StreamingExecutorContext): Instr
             content += delta.content;
 
             // 立即发布流式内容到 Redis Stream
-            console.time('publishStreamChunk');
             await streamManager.publishStreamChunk(sessionId, stepIndex, {
               chunkType: 'text',
               content: delta.content,
               fullContent: content,
               messageId: llmPayload.assistantMessageId || 'unknown',
             });
-            console.timeEnd('publishStreamChunk');
 
             // 实时更新数据库中的消息内容
             // if (ctx.messageModel && llmPayload.assistantMessageId) {
@@ -144,6 +142,15 @@ export function createStreamingLLMExecutor(ctx: StreamingExecutorContext): Instr
         log('[StreamingLLMExecutor] Stream processing error: %O', streamError);
         throw streamError;
       }
+
+      // 添加一个完整的 llm_stream 事件（包含所有流式块）
+      events.push({
+        result: {
+          content,
+          tool_calls: toolCalls,
+        },
+        type: 'llm_result',
+      });
 
       // 发布流式结束事件
       await streamManager.publishStreamEvent(sessionId, {
@@ -201,7 +208,7 @@ export function createStreamingLLMExecutor(ctx: StreamingExecutorContext): Instr
           },
           phase: 'llm_result',
           session: {
-            eventCount: newState.events.length + events.length,
+            eventCount: events.length,
             messageCount: newState.messages.length,
             sessionId: state.sessionId,
             status: 'running',
@@ -309,7 +316,7 @@ export function createStreamingToolExecutor(ctx: StreamingExecutorContext): Inst
           },
           phase: 'tool_result',
           session: {
-            eventCount: newState.events.length + events.length,
+            eventCount: events.length,
             messageCount: newState.messages.length,
             sessionId: state.sessionId,
             status: 'running',

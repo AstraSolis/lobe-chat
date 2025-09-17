@@ -59,7 +59,6 @@ export interface SessionStatusResult {
   stats: {
     lastActiveTime: number;
     totalCost: number;
-    totalEvents: number;
     totalMessages: number;
     totalSteps: number;
     uptime: number;

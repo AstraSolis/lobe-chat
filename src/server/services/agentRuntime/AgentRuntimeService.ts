@@ -280,7 +280,6 @@ export class AgentRuntimeService {
           ? Date.now() - new Date(sessionMetadata.lastActiveAt).getTime()
           : 0,
         totalCost: currentState.cost?.total || 0,
-        totalEvents: currentState.events?.length || 0,
         totalMessages: currentState.messages?.length || 0,
         totalSteps: currentState.stepCount || 0,
         uptime: sessionMetadata.createdAt
@@ -455,7 +454,6 @@ export class AgentRuntimeService {
           },
           phase: 'user_input' as const,
           session: {
-            eventCount: currentState.events?.length || 0,
             messageCount: currentState.messages?.length || 0,
             sessionId,
             status: 'idle' as const,
