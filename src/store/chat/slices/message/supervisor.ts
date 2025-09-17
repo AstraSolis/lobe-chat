@@ -13,6 +13,14 @@ export interface SupervisorDecision {
 
 export type SupervisorDecisionList = SupervisorDecision[]; // Empty array = stop conversation
 
+interface SupervisorDecisionResponse {
+  decisions: Array<{
+    id: string;
+    instruction?: string;
+    target?: string;
+  }>;
+}
+
 export interface SupervisorContext {
   abortController?: AbortController;
   allowDM?: boolean;
@@ -70,29 +78,123 @@ export class GroupChatSupervisor {
   /**
    * Call LLM service to get supervisor decision
    */
-  private async callLLMForDecision(prompt: string, context: SupervisorContext): Promise<string> {
+  private async callLLMForDecision(
+    prompt: string,
+    context: SupervisorContext,
+  ): Promise<SupervisorDecisionResponse | string> {
     const supervisorConfig = {
       model: context.model,
       provider: context.provider,
       temperature: 0.3,
     };
 
+    const responseFormat = {
+      json_schema: {
+        name: 'supervisor_decision_response',
+        schema: {
+          additionalProperties: false,
+          properties: {
+            decisions: {
+              items: {
+                additionalProperties: false,
+                properties: {
+                  id: { description: 'ID of the agent who should speak', type: 'string' },
+                  instruction: { description: 'Optional instruction for the agent', type: 'string' },
+                  target: {
+                    description: 'Target agent ID or "user" for DM',
+                    type: 'string',
+                  },
+                },
+                required: ['id'],
+                type: 'object',
+              },
+              type: 'array',
+            },
+          },
+          required: ['decisions'],
+          type: 'object',
+        },
+      },
+      type: 'json_schema',
+    } as const;
+
+    try {
+      const response = await chatService.getStructuredCompletion<SupervisorDecisionResponse>(
+        {
+          messages: [{ content: prompt, role: 'user' }],
+          response_format: responseFormat,
+          stream: false,
+          ...supervisorConfig,
+        },
+        {
+          signal: context.abortController?.signal,
+        },
+      );
+
+      console.log('Supervisor LLM response:', response);
+
+      return response;
+    } catch (err) {
+      if (this.isAbortError(err, context)) {
+        throw this.createAbortError();
+      }
+
+      if (this.shouldFallbackToStreaming(err)) {
+        return this.callLLMForDecisionWithStreaming(prompt, context, supervisorConfig);
+      }
+
+      console.error('Supervisor LLM error:', err);
+      throw err instanceof Error ? err : new Error(String(err));
+    }
+  }
+
+  private shouldFallbackToStreaming(error: unknown) {
+    if (!error) return false;
+    if (error instanceof SyntaxError) return true;
+
+    const message = (error as Error)?.message || '';
+
+    return /unexpected token|invalid json|not valid json/i.test(message);
+  }
+
+  private createAbortError() {
+    const abortError = new Error('The operation was aborted');
+    abortError.name = 'AbortError';
+    return abortError;
+  }
+
+  private isAbortError(error: unknown, context: SupervisorContext) {
+    if (context.abortController?.signal.aborted) return true;
+
+    const name = (error as DOMException)?.name;
+
+    return name === 'AbortError';
+  }
+
+  private async callLLMForDecisionWithStreaming(
+    prompt: string,
+    context: SupervisorContext,
+    supervisorConfig: {
+      model: string;
+      provider: string;
+      temperature: number;
+    },
+  ) {
     let res = '';
     let error: Error | null = null;
 
     await chatService.fetchPresetTaskResult({
       abortController: context.abortController,
       onError: (err) => {
-        console.error('Supervisor LLM error:', err);
+        console.error('Supervisor LLM error (fallback):', err);
         error = err;
       },
       onFinish: async (content) => {
-        console.log('Supervisor LLM response:', content);
+        console.log('Supervisor LLM response (fallback):', content);
         res = content.trim();
       },
       onLoadingChange: (loading) => {
-        // Optional: Could emit loading state if needed for UI feedback
-        console.log('Supervisor LLM loading state:', loading);
+        console.log('Supervisor LLM loading state (fallback):', loading);
       },
       params: {
         messages: [{ content: prompt, role: 'user' }],
@@ -101,23 +203,16 @@ export class GroupChatSupervisor {
       },
     });
 
-    // Check if the request was aborted
     if (context.abortController?.signal.aborted) {
-      const abortError = new Error('The operation was aborted');
-      abortError.name = 'AbortError';
-      throw abortError;
+      throw this.createAbortError();
     }
 
-    // If there was an error, throw it to be caught by the caller
     if (error) {
       throw error;
     }
 
-    // If we have no response and no error, it might be an abort case
     if (!res) {
-      const abortError = new Error('The operation was aborted');
-      abortError.name = 'AbortError';
-      throw abortError;
+      throw this.createAbortError();
     }
 
     return res;
@@ -127,31 +222,23 @@ export class GroupChatSupervisor {
    * Parse LLM response into decision
    */
   private parseDecision(
-    response: string,
+    response: SupervisorDecisionResponse | string,
     availableAgents: GroupMemberWithAgent[],
   ): SupervisorDecisionList {
     try {
-      // Extract JSON array from response by locating the first '[' and the last ']'
-      const startIndex = response.indexOf('[');
-      const endIndex = response.lastIndexOf(']');
-      if (startIndex === -1 || endIndex === -1 || endIndex < startIndex) {
-        throw new Error('No JSON array found in response');
-      }
-      const jsonText = response.slice(startIndex, endIndex + 1);
+      const decisions = this.normalizeDecisions(response);
 
-      const parsedResponse = JSON.parse(jsonText);
-
-      if (!Array.isArray(parsedResponse)) {
-        throw new Error('Response must be an array');
+      if (!Array.isArray(decisions)) {
+        throw new Error('Response must include a decisions array');
       }
 
       // Empty array = stop conversation
-      if (parsedResponse.length === 0) {
+      if (decisions.length === 0) {
         return [];
       }
 
       // Filter and validate the response objects
-      const decisions = parsedResponse
+      const normalizedDecisions = decisions
         .filter(
           (item: any) =>
             typeof item === 'object' &&
@@ -165,13 +252,28 @@ export class GroupChatSupervisor {
           target: item.target || undefined,
         }));
 
-      return decisions;
+      return normalizedDecisions;
     } catch (error) {
       // Re-throw the error with more context so it can be caught and displayed to the user via toast
       throw new Error(
         `Failed to parse supervisor decision: ${error instanceof Error ? error.message : String(error)}`,
       );
     }
+  }
+
+  private normalizeDecisions(response: SupervisorDecisionResponse | string) {
+    if (typeof response === 'string') {
+      const startIndex = response.indexOf('[');
+      const endIndex = response.lastIndexOf(']');
+      if (startIndex === -1 || endIndex === -1 || endIndex < startIndex) {
+        throw new Error('No JSON array found in response');
+      }
+
+      const jsonText = response.slice(startIndex, endIndex + 1);
+      return JSON.parse(jsonText);
+    }
+
+    return response?.decisions;
   }
 
   /**

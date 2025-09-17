@@ -7,14 +7,14 @@ import { useTranslation } from 'react-i18next';
 import { Flexbox } from 'react-layout-kit';
 
 import { MemberSelectionModal } from '@/components/MemberSelectionModal';
-import { DEFAULT_AVATAR } from '@/const/meta';
+import { DEFAULT_AVATAR, DEFAULT_ORCHESTRATOR_AVATAR } from '@/const/meta';
 import { useChatStore } from '@/store/chat';
 import { chatSelectors } from '@/store/chat/selectors';
 import { useChatGroupStore } from '@/store/chatGroup';
 import { chatGroupSelectors } from '@/store/chatGroup/selectors';
 import { useUserStore } from '@/store/user';
 import { userProfileSelectors } from '@/store/user/selectors';
-import { GroupMemberWithAgent, LobeGroupSession, LobeSession } from '@/types/session';
+import { LobeGroupSession } from '@/types/session';
 
 import AgentSettings from '../../../features/AgentSettings';
 import GroupMemberItem from './GroupMemberItem';
@@ -131,7 +131,7 @@ const GroupMember = memo<GroupMemberProps>(
                   title={t('groupSidebar.members.removeMember')}
                 />
               }
-              avatar={'🎙️'}
+              avatar={DEFAULT_ORCHESTRATOR_AVATAR}
               generating={isSupervisorLoading}
               generatingTooltip={t('groupSidebar.members.orchestratorThinking')}
               id={'orchestrator'}
@@ -144,44 +144,6 @@ const GroupMember = memo<GroupMemberProps>(
               title={t('groupSidebar.members.orchestrator')}
             />
           )}
-
-          {/* Host - show if supervisor is disabled and there is a host */}
-          {!groupConfig?.enableSupervisor && (() => {
-            const hostMember = currentSession?.members?.find((member: GroupMemberWithAgent) => member.role === 'host');
-            if (hostMember) {
-              const hostId = hostMember.id || 'host';
-              const removing = removingMemberIds.includes(hostId);
-
-              const handleRemoveHost = async () => {
-                await withRemovingFlag(hostId, () => updateGroupConfig({ enableSupervisor: true }));
-              };
-
-              return (
-                <GroupMemberItem
-                  actions={
-                    <ActionIcon
-                      danger
-                      icon={UserMinus}
-                      loading={removing}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        void handleRemoveHost();
-                      }}
-                      size={'small'}
-                      title={t('groupSidebar.members.removeMember')}
-                    />
-                  }
-                  avatar={hostMember.avatar || DEFAULT_AVATAR}
-                  background={hostMember.backgroundColor}
-                  id={hostId}
-                  pin
-                  showActionsOnHover
-                  title={`${hostMember.title || 'Host'} (Host)`}
-                />
-              );
-            }
-            return null;
-          })()}
 
           {/* Current User */}
           <GroupMemberItem

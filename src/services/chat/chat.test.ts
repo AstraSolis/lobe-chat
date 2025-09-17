@@ -16,6 +16,7 @@ import { ChatStreamPayload, type OpenAIChatMessage } from '@/types/openai/chat';
 import { LobeTool } from '@/types/tool';
 
 import * as helpers from './helper';
+import { API_ENDPOINTS } from '../_url';
 import { chatService } from './index';
 
 // Mocking external dependencies
@@ -970,6 +971,90 @@ describe('ChatService', () => {
           }),
           undefined,
         );
+      });
+    });
+  });
+
+  describe('getStructuredCompletion', () => {
+    let enableFetchSpy: ReturnType<typeof vi.spyOn>;
+
+    beforeEach(() => {
+      enableFetchSpy = vi.spyOn(helpers, 'isEnableFetchOnClient').mockReturnValue(false);
+    });
+
+    afterEach(() => {
+      enableFetchSpy.mockRestore();
+    });
+
+    it('should post structured payload without tools or streaming and return parsed data', async () => {
+      const mockFetch = fetch as unknown as vi.Mock;
+      mockFetch.mockClear();
+
+      const mockResponse = { result: { foo: 'bar' } };
+      mockFetch.mockResolvedValueOnce(
+        new Response(JSON.stringify(mockResponse), {
+          headers: {
+            'Content-Type': 'application/json',
+            'X-lobe-chat-trace-id': 'trace-123',
+          },
+          status: 200,
+        }),
+      );
+
+      const onFinish = vi.fn();
+
+      const result = await chatService.getStructuredCompletion(
+        {
+          messages: [{ content: 'Hi', role: 'user' as const }],
+          model: 'gpt-4o',
+          response_format: { type: 'json_object' },
+        },
+        { onFinish },
+      );
+
+      expect(result).toEqual(mockResponse);
+      expect(onFinish).toHaveBeenCalledWith('', {
+        traceId: 'trace-123',
+        type: 'done',
+        usage: undefined,
+      });
+
+      expect(mockFetch).toHaveBeenCalledTimes(1);
+      const [url, init] = mockFetch.mock.calls[0];
+
+      expect(url).toBe(API_ENDPOINTS.chat('openai'));
+      expect((init as RequestInit).method).toBe('POST');
+
+      const body = JSON.parse((init as RequestInit).body as string);
+      expect(body.stream).toBe(false);
+      expect(body.responseMode).toBe('json');
+      expect(body.response_format).toEqual({ type: 'json_object' });
+      expect(body.tools).toBeUndefined();
+      expect(body.tool_choice).toBeUndefined();
+    });
+
+    it('should invoke onErrorHandle when request throws', async () => {
+      const mockFetch = fetch as unknown as vi.Mock;
+      mockFetch.mockClear();
+
+      const networkError = new Error('network failed');
+      mockFetch.mockRejectedValueOnce(networkError);
+
+      const onErrorHandle = vi.fn();
+
+      await expect(
+        chatService.getStructuredCompletion(
+          {
+            messages: [{ content: 'Hi', role: 'user' as const }],
+            response_format: { type: 'json_object' },
+          },
+          { onErrorHandle },
+        ),
+      ).rejects.toThrow('network failed');
+
+      expect(onErrorHandle).toHaveBeenCalledWith({
+        message: 'network failed',
+        type: ChatErrorType.UnknownChatFetchError,
       });
     });
   });

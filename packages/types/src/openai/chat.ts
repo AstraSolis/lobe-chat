@@ -2,6 +2,26 @@ import { LLMRoleType } from '../llm';
 import { MessageToolCall } from '../message';
 import { OpenAIFunctionCall } from './functionCall';
 
+export type ChatResponseFormat =
+  | { type: 'json_object' }
+  | {
+      json_schema: {
+        /**
+         * JSON schema definition used for validation.
+         */
+        schema: Record<string, any>;
+        /**
+         * Schema identifier required by OpenAI.
+         */
+        name: string;
+        /**
+         * Enforce strict schema validation when true.
+         */
+        strict?: boolean;
+      };
+      type: 'json_schema';
+    };
+
 interface UserMessageContentPartText {
   text: string;
   type: 'text';
@@ -66,6 +86,7 @@ export interface ChatStreamPayload {
    * @title 返回的文本数量
    */
   n?: number;
+  response_format?: ChatResponseFormat;
   /**
    * 开启的插件列表
    */

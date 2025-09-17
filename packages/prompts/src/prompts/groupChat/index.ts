@@ -136,18 +136,17 @@ ${conversationHistory}
 </conversation_history>
 
 Rules:
-- Return an array of objects where each object has an "id" field for the agent who should respond
+- Share your decision on who should respond next in a concise format
 ${dmRules}
 - You can optionally include an "instruction" field to give specific guidance in English to the agent about what they should focus on or how they should respond
 - If the conversation seems complete, or no one needs reply, return empty array []
 ${naturalFlowRule}
-- Return ONLY a JSON array of objects, nothing else
 
 Examples:
 ${dmExamples}
 - Stop conversation: []
 
-Now return an array of objects where each object has an "id" field for the agent who should respond.
+Now share your decision.
 `;
 
   return prompt.trim();
