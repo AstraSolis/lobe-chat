@@ -109,18 +109,10 @@ export class QStashQueueServiceImpl implements QueueServiceImpl {
   }
 
   async healthCheck(): Promise<HealthCheckResult> {
-    try {
-      // Simple health check without sending actual messages
-      return {
-        healthy: true,
-        message: 'QStash queue service is ready',
-      };
-    } catch (error) {
-      return {
-        healthy: false,
-        message: `Queue service unhealthy: ${(error as Error).message}`,
-      };
-    }
+    // Simple health check without sending actual messages
+    return {
+      healthy: true,
+      message: 'QStash queue service is ready',
+    };
   }
-
 }
