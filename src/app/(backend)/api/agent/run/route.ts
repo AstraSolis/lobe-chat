@@ -3,12 +3,18 @@ import { NextRequest, NextResponse } from 'next/server';
 
 import { AgentRuntimeService } from '@/server/services/agentRuntime';
 
+import { isEnableAgent } from '../isEnableAgent';
+
 const log = debug('api-route:agent:execute-step');
 
 // Initialize service
 const agentRuntimeService = new AgentRuntimeService();
 
 export async function POST(request: NextRequest) {
+  if (!isEnableAgent()) {
+    return NextResponse.json({ error: 'Agent features are not enabled' }, { status: 404 });
+  }
+
   const startTime = Date.now();
 
   const body = await request.json();
@@ -83,6 +89,10 @@ export async function POST(request: NextRequest) {
  * 健康检查端点
  */
 export async function GET() {
+  if (!isEnableAgent()) {
+    return NextResponse.json({ error: 'Agent features are not enabled' }, { status: 404 });
+  }
+
   try {
     return NextResponse.json({
       healthy: true,

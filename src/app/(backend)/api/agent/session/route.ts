@@ -3,6 +3,8 @@ import { NextRequest, NextResponse } from 'next/server';
 
 import { AgentRuntimeService } from '@/server/services/agentRuntime';
 
+import { isEnableAgent } from '../isEnableAgent';
+
 const log = debug('api-route:agent:session');
 
 // Initialize service
@@ -12,6 +14,10 @@ const agentRuntimeService = new AgentRuntimeService();
  * 创建新的 Agent 会话
  */
 export async function POST(request: NextRequest) {
+  if (!isEnableAgent()) {
+    return NextResponse.json({ error: 'Agent features are not enabled' }, { status: 404 });
+  }
+
   try {
     const body = await request.json();
     log('Creating session with body:', body);
@@ -104,6 +110,10 @@ export async function POST(request: NextRequest) {
  * 获取会话状态
  */
 export async function GET(request: NextRequest) {
+  if (!isEnableAgent()) {
+    return NextResponse.json({ error: 'Agent features are not enabled' }, { status: 404 });
+  }
+
   try {
     const { searchParams } = new URL(request.url);
     const sessionId = searchParams.get('sessionId');

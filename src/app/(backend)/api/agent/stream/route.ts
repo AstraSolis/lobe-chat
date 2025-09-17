@@ -3,6 +3,8 @@ import { NextRequest, NextResponse } from 'next/server';
 
 import { StreamEventManager } from '@/server/modules/AgentRuntime/StreamEventManager';
 
+import { isEnableAgent } from '../isEnableAgent';
+
 const log = debug('api-route:agent:stream');
 
 // Initialize stream event manager
@@ -13,6 +15,10 @@ const streamManager = new StreamEventManager();
  * Provides real-time Agent execution event stream for clients
  */
 export async function GET(request: NextRequest) {
+  if (!isEnableAgent()) {
+    return NextResponse.json({ error: 'Agent features are not enabled' }, { status: 404 });
+  }
+
   const { searchParams } = new URL(request.url);
   const sessionId = searchParams.get('sessionId');
   const lastEventId = searchParams.get('lastEventId') || '0';
@@ -198,6 +204,10 @@ export async function GET(request: NextRequest) {
  * OPTIONS request handler (CORS preflight)
  */
 export async function OPTIONS() {
+  if (!isEnableAgent()) {
+    return NextResponse.json({ error: 'Agent features are not enabled' }, { status: 404 });
+  }
+
   return new Response(null, {
     headers: {
       'Access-Control-Allow-Headers': 'Cache-Control, Last-Event-ID',
