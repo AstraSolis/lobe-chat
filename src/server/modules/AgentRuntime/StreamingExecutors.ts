@@ -102,7 +102,7 @@ export function createStreamingLLMExecutor(ctx: StreamingExecutorContext): Instr
               try {
                 await ctx.messageModel.updateContent(llmPayload.assistantMessageId, content);
               } catch (error) {
-                console.warn('[StreamingLLMExecutor] Failed to update message content:', error);
+                log('[StreamingLLMExecutor] Failed to update message content: %O', error);
               }
             }
           } else if (chunk.type === 'tool_calls' && chunk.tool_calls) {
@@ -150,7 +150,7 @@ export function createStreamingLLMExecutor(ctx: StreamingExecutorContext): Instr
             toolCalls: toolCalls.length > 0 ? toolCalls : undefined,
           });
         } catch (error) {
-          console.warn('[StreamingLLMExecutor] Failed to update final message:', error);
+          log('[StreamingLLMExecutor] Failed to update final message: %O', error);
         }
       }
 
