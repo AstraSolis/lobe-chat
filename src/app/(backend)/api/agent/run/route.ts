@@ -7,13 +7,13 @@ import { isEnableAgent } from '../isEnableAgent';
 
 const log = debug('api-route:agent:execute-step');
 
-// Initialize service
-const agentRuntimeService = new AgentRuntimeService();
-
 export async function POST(request: NextRequest) {
   if (!isEnableAgent()) {
     return NextResponse.json({ error: 'Agent features are not enabled' }, { status: 404 });
   }
+
+  // Initialize service
+  const agentRuntimeService = new AgentRuntimeService();
 
   const startTime = Date.now();
 

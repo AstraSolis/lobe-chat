@@ -7,9 +7,6 @@ import { isEnableAgent } from '../isEnableAgent';
 
 const log = debug('api-route:agent:human-intervention');
 
-// Initialize service
-const agentRuntimeService = new AgentRuntimeService();
-
 /**
  * 处理人工干预请求
  */
@@ -17,6 +14,9 @@ export async function POST(request: NextRequest) {
   if (!isEnableAgent()) {
     return NextResponse.json({ error: 'Agent features are not enabled' }, { status: 404 });
   }
+
+  // Initialize service
+  const agentRuntimeService = new AgentRuntimeService();
 
   try {
     const body = await request.json();
@@ -128,6 +128,9 @@ export async function GET(request: NextRequest) {
   if (!isEnableAgent()) {
     return NextResponse.json({ error: 'Agent features are not enabled' }, { status: 404 });
   }
+
+  // Initialize service
+  const agentRuntimeService = new AgentRuntimeService();
 
   try {
     const { searchParams } = new URL(request.url);
