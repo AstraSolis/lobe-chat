@@ -101,12 +101,7 @@ export class AgentRuntimeService {
         log('Session %s created without auto-start', sessionId);
       }
 
-      return {
-        autoStarted,
-        messageId,
-        sessionId,
-        success: true,
-      };
+      return { autoStarted, messageId, sessionId, success: true };
     } catch (error) {
       log('Failed to create session %s: %O', sessionId, error);
       throw error;
