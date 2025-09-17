@@ -94,11 +94,13 @@ export default {
   },
 
   groupWizard: {
-    builtIn: '内置',
     chooseMembers: '选择现有助手...',
     createGroup: '创建群聊',
     groupMembers: '这些助手也将被添加到您的列表中',
-    host: '主持人',
+    host: {
+      description: '使群聊自动化运行',
+      title: '主持人',
+    },
     memberCount: '{{count}} 个成员',
     noMatchingTemplates: '没有匹配的模板',
     noSelectedTemplates: '没有选择模板',

@@ -65,6 +65,7 @@ const useStyles = createStyles(({ css, token }) => ({
     display: flex;
     flex-direction: row;
     height: 500px;
+    // border: 1px solid ${token.colorBorderSecondary};
   `,
   description: css`
     font-size: 12px;
@@ -79,7 +80,7 @@ const useStyles = createStyles(({ css, token }) => ({
 
     padding-block: ${token.paddingSM}px 0;
     padding-inline: ${token.paddingSM}px;
-    border-inline-end: 1px solid ${token.colorBorderSecondary};
+    border-right: 1px solid ${token.colorBorderSecondary};
   `,
   listItem: css`
     cursor: pointer;
@@ -106,7 +107,6 @@ const useStyles = createStyles(({ css, token }) => ({
   `,
   settingsPanel: css`
     padding: ${token.paddingSM}px;
-    border-block-start: 1px solid ${token.colorBorderSecondary};
     background: ${token.colorBgContainer};
   `,
   templateCard: css`
@@ -138,10 +138,12 @@ export interface ChatGroupWizardProps {
   onCreateCustom: (
     selectedAgents: string[],
     hostConfig?: { model?: string; provider?: string },
+    enableSupervisor?: boolean,
   ) => void | Promise<void>;
   onCreateFromTemplate: (
     templateId: string,
     hostConfig?: { model?: string; provider?: string },
+    enableSupervisor?: boolean,
   ) => void | Promise<void>;
   open: boolean;
 }
@@ -180,6 +182,7 @@ const ChatGroupWizard = memo<ChatGroupWizardProps>(
     const [searchTerm, setSearchTerm] = useState('');
     const [selectedTemplate, setSelectedTemplate] = useState<string>('');
     const [removedMembers, setRemovedMembers] = useState<Record<string, string[]>>({});
+    const [isHostRemoved, setIsHostRemoved] = useState(false);
     const [hostModelConfig, setHostModelConfig] = useState<{ model?: string; provider?: string }>(
       defaultModel,
     );
@@ -190,9 +193,10 @@ const ChatGroupWizard = memo<ChatGroupWizardProps>(
     const handleTemplateToggle = (templateId: string) => {
       setSelectedTemplate((prev) => {
         const newTemplate = prev === templateId ? '' : templateId;
-        // Clear removed members when switching to a different template
+        // Clear removed members and reset host when switching to a different template
         if (newTemplate !== prev) {
           setRemovedMembers({});
+          setIsHostRemoved(false);
         }
         return newTemplate;
       });
@@ -202,6 +206,7 @@ const ChatGroupWizard = memo<ChatGroupWizardProps>(
       setSelectedTemplate('');
       setSearchTerm('');
       setRemovedMembers({});
+      setIsHostRemoved(false);
       setHostModelConfig(defaultModel);
     };
 
@@ -217,6 +222,10 @@ const ChatGroupWizard = memo<ChatGroupWizardProps>(
       }));
     }, []);
 
+    const handleRemoveHost = useCallback(() => {
+      setIsHostRemoved(true);
+    }, []);
+
     const handleTemplateConfirm = async () => {
       if (!selectedTemplate) return;
 
@@ -225,14 +234,16 @@ const ChatGroupWizard = memo<ChatGroupWizardProps>(
         console.log(
           'ChatGroupWizard: Creating from template with hostModelConfig:',
           hostModelConfig,
+          'enableSupervisor:',
+          !isHostRemoved,
         );
-        await onCreateFromTemplate(selectedTemplate, hostModelConfig);
+        await onCreateFromTemplate(selectedTemplate, hostModelConfig, !isHostRemoved);
         // Reset will be handled by parent after successful creation
         handleReset();
       } else {
         // Fallback for backwards compatibility
         try {
-          await onCreateFromTemplate(selectedTemplate, hostModelConfig);
+          await onCreateFromTemplate(selectedTemplate, hostModelConfig, !isHostRemoved);
           handleReset();
         } catch (error) {
           console.error('Failed to create group from template:', error);
@@ -254,8 +265,13 @@ const ChatGroupWizard = memo<ChatGroupWizardProps>(
 
     const handleMemberSelectionConfirm = async (selectedAgents: string[]) => {
       setIsMemberSelectionOpen(false);
-      console.log('ChatGroupWizard: Creating custom with hostModelConfig:', hostModelConfig);
-      await onCreateCustom(selectedAgents, hostModelConfig);
+      console.log(
+        'ChatGroupWizard: Creating custom with hostModelConfig:',
+        hostModelConfig,
+        'enableSupervisor:',
+        !isHostRemoved,
+      );
+      await onCreateCustom(selectedAgents, hostModelConfig, !isHostRemoved);
     };
 
     // Filter templates based on search term
@@ -369,31 +385,41 @@ const ChatGroupWizard = memo<ChatGroupWizardProps>(
               ) : (
                 <Flexbox flex={1} style={{ overflowY: 'auto' }}>
                   {/* Host Item */}
-                  <Flexbox
-                    align="center"
-                    gap={12}
-                    horizontal
-                    justify="center"
-                    padding={16}
-                    style={{
-                      marginBottom: 16,
-                    }}
-                  >
-                    <Avatar avatar="🎙️" shape="circle" size={40} />
-                    <Flexbox flex={1} gap={2}>
-                      <Text style={{ fontSize: 14, fontWeight: 500 }}>{t('groupWizard.host')}</Text>
-                      <Text style={{ color: '#999', fontSize: 12 }}>
-                        {t('groupWizard.builtIn')}
-                      </Text>
-                    </Flexbox>
-                    <ModelSelect
-                      onChange={handleHostModelChange}
-                      value={{
-                        model: hostModelConfig.model || defaultModel.model!,
-                        provider: hostModelConfig.provider || defaultModel.provider!,
+                  {!isHostRemoved && (
+                    <Flexbox
+                      align="center"
+                      gap={12}
+                      horizontal
+                      justify="center"
+                      padding={16}
+                      style={{
+                        marginBottom: 16,
                       }}
-                    />
-                  </Flexbox>
+                    >
+                      <Avatar avatar="🎙️" shape="circle" size={40} />
+                      <Flexbox flex={1} gap={2}>
+                        <Text style={{ fontSize: 14, fontWeight: 500 }}>
+                          {t('groupWizard.host.title')}
+                        </Text>
+                        <Text style={{ color: '#999', fontSize: 12 }}>
+                          {t('groupWizard.host.description')}
+                        </Text>
+                      </Flexbox>
+                      <ModelSelect
+                        onChange={handleHostModelChange}
+                        value={{
+                          model: hostModelConfig.model || defaultModel.model!,
+                          provider: hostModelConfig.provider || defaultModel.provider!,
+                        }}
+                      />
+                      <ActionIcon
+                        icon={X}
+                        onClick={handleRemoveHost}
+                        size="small"
+                        style={{ color: '#999' }}
+                      />
+                    </Flexbox>
+                  )}
 
                   {selectedTemplateMembers.length > 0 && (
                     <>

@@ -5,6 +5,7 @@ export interface LobeChatGroupMetaConfig {
 
 export interface LobeChatGroupChatConfig {
     allowDM: boolean;
+    enableSupervisor: boolean;
     maxResponseInRow: number;
     orchestratorModel: string;
     orchestratorProvider: string;

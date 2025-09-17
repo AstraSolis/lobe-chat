@@ -1,5 +1,6 @@
 export interface ChatGroupConfig {
   allowDM?: boolean;
+  enableSupervisor?: boolean;
   maxResponseInRow?: number;
   orchestratorModel?: string;
   orchestratorProvider?: string;

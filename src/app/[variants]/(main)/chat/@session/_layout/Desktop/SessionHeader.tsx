@@ -56,6 +56,7 @@ const Header = memo(() => {
   const handleCreateGroupFromTemplate = async (
     templateId: string,
     hostConfig?: { model?: string; provider?: string },
+    enableSupervisor?: boolean,
   ) => {
     // Don't close the modal immediately, keep it open during the process
     setIsCreatingGroup(true);
@@ -115,12 +116,15 @@ const Header = memo(() => {
 
       await createGroup(
         {
-          config: hostConfig
-            ? {
-                orchestratorModel: hostConfig.model,
-                orchestratorProvider: hostConfig.provider,
-              }
-            : undefined,
+          config: {
+            ...(hostConfig
+              ? {
+                  orchestratorModel: hostConfig.model,
+                  orchestratorProvider: hostConfig.provider,
+                }
+              : {}),
+            enableSupervisor: enableSupervisor ?? true,
+          },
           title: template.title,
         },
         memberAgentIds,
@@ -139,6 +143,7 @@ const Header = memo(() => {
   const handleCreateGroupWithMembers = async (
     selectedAgents: string[],
     hostConfig?: { model?: string; provider?: string },
+    enableSupervisor?: boolean,
   ) => {
     // Don't close modal immediately for custom group creation either
     setIsCreatingGroup(true);
@@ -156,12 +161,15 @@ const Header = memo(() => {
 
       await createGroup(
         {
-          config: hostConfig
-            ? {
-                orchestratorModel: hostConfig.model,
-                orchestratorProvider: hostConfig.provider,
-              }
-            : undefined,
+          config: {
+            ...(hostConfig
+              ? {
+                  orchestratorModel: hostConfig.model,
+                  orchestratorProvider: hostConfig.provider,
+                }
+              : {}),
+            enableSupervisor: enableSupervisor ?? true,
+          },
           title: t('defaultGroupChat'),
         },
         selectedAgents,
