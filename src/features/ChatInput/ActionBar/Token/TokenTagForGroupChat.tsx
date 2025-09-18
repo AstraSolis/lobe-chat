@@ -14,6 +14,7 @@ import { useAgentStore } from '@/store/agent';
 import { agentSelectors } from '@/store/agent/selectors';
 import { useChatStore } from '@/store/chat';
 import { chatSelectors } from '@/store/chat/selectors';
+import { messageMapKey } from '@/store/chat/utils/messageMapKey';
 import { chatGroupSelectors } from '@/store/chatGroup/selectors';
 import { useChatGroupStore } from '@/store/chatGroup/store';
 import { useSessionStore } from '@/store/session';
@@ -35,6 +36,7 @@ const TokenTagForGroupChat = memo<TokenTagForGroupChatProps>(({ total: messageSt
   const theme = useTheme();
 
   const input = useChatStore((s) => s.inputMessage);
+  const activeTopicId = useChatStore((s) => s.activeTopicId);
 
   const [model, provider] = useAgentStore((s) => {
     return [
@@ -45,7 +47,11 @@ const TokenTagForGroupChat = memo<TokenTagForGroupChatProps>(({ total: messageSt
 
   // Group chat specific data
   const groupAgents = useSessionStore(sessionSelectors.currentGroupAgents);
+  const activeSessionId = useSessionStore((s) => s.activeId);
   const groupConfig = useChatGroupStore(chatGroupSelectors.currentGroupConfig);
+  const supervisorTodos = useChatStore((s) =>
+    activeSessionId ? s.supervisorTodos[messageMapKey(activeSessionId, activeTopicId)] || [] : [],
+  );
 
   const maxTokens = useModelContextWindowTokens(model, provider);
 
@@ -146,6 +152,7 @@ const TokenTagForGroupChat = memo<TokenTagForGroupChatProps>(({ total: messageSt
           .filter((agent) => agent.id)
           .map((agent) => ({ id: agent.id!, title: agent.title })),
         conversationHistory,
+        todoList: supervisorTodos,
         systemPrompt: groupConfig.systemPrompt,
         userName: realUserName,
       });
@@ -153,7 +160,7 @@ const TokenTagForGroupChat = memo<TokenTagForGroupChatProps>(({ total: messageSt
       console.warn('Failed to calculate supervisor tokens:', error);
       return '';
     }
-  }, [groupAgents, groupConfig.systemPrompt, messageString]);
+  }, [groupAgents, groupConfig.systemPrompt, messageString, supervisorTodos]);
 
   const supervisorToken = useTokenCount(supervisorPrompt);
 

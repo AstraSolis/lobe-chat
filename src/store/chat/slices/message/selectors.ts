@@ -265,6 +265,13 @@ const getThreadMessageIDs =
 const isSupervisorLoading = (groupId: string) => (s: ChatStoreState) =>
   s.supervisorDecisionLoading.includes(groupId);
 
+const getSupervisorTodos =
+  (groupId?: string, topicId?: string | null) =>
+  (s: ChatStoreState) => {
+    if (!groupId) return [];
+    return s.supervisorTodos[messageMapKey(groupId, topicId)] || [];
+  };
+
 export const chatSelectors = {
   activeBaseChats,
   activeBaseChatsWithoutTool,
@@ -279,6 +286,7 @@ export const chatSelectors = {
   getThreadMessageIDs,
   getThreadMessages,
   getTraceIdByMessageId,
+  getSupervisorTodos,
   inboxActiveTopicMessages,
   isAIGenerating,
   isCreatingMessage,

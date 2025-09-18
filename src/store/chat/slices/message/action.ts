@@ -36,6 +36,7 @@ import type { ChatStoreState } from '../../initialState';
 import { chatSelectors } from '../../selectors';
 import { preventLeavingFn, toggleBooleanList } from '../../utils';
 import { MessageDispatch, messagesReducer } from './reducer';
+import type { SupervisorTodoItem } from './supervisor';
 
 const n = setNamespace('m');
 
@@ -155,6 +156,15 @@ export interface ChatMessageAction {
    * Update active session type
    */
   internal_updateActiveSessionType: (sessionType?: 'agent' | 'group') => void;
+
+  /**
+   * Update supervisor todo list for a group/topic
+   */
+  internal_updateSupervisorTodos: (
+    groupId: string,
+    topicId: string | null | undefined,
+    todos: SupervisorTodoItem[],
+  ) => void;
 
   /**
    * Update active session ID with cleanup of pending operations
@@ -569,6 +579,17 @@ export const chatMessage: StateCreator<
       }),
       false,
       n(`updateGroupAgentMaps/${groupId}`),
+    );
+  },
+
+  internal_updateSupervisorTodos: (groupId, topicId, todos) => {
+    set(
+      produce((state: ChatStoreState) => {
+        const key = messageMapKey(groupId, topicId);
+        state.supervisorTodos[key] = todos;
+      }),
+      false,
+      n(`updateSupervisorTodos/${groupId}`),
     );
   },
 

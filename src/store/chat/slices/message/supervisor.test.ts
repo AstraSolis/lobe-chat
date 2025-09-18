@@ -50,14 +50,20 @@ describe('GroupChatSupervisor', () => {
   });
 
   it('should request structured completion and return filtered decisions', async () => {
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+
     vi.mocked(chatService.getStructuredCompletion).mockResolvedValue({
       decisions: [
         { id: 'agent-1', instruction: 'Say hello', target: 'user' },
         { id: 'unknown-agent', instruction: 'Ignore me' },
       ],
+      todos: [
+        { content: 'Review action items', finished: false },
+        { content: 'Prepare summary', finished: true },
+      ],
     });
 
-    const decisions = await supervisor.makeDecision({ ...baseContext });
+    const result = await supervisor.makeDecision({ ...baseContext });
 
     expect(chatService.getStructuredCompletion).toHaveBeenCalledTimes(1);
     const [payload] = vi.mocked(chatService.getStructuredCompletion).mock.calls[0];
@@ -69,44 +75,73 @@ describe('GroupChatSupervisor', () => {
       stream: false,
     });
 
-    expect(decisions).toEqual([
+    expect(result.decisions).toEqual([
       {
         id: 'agent-1',
         instruction: 'Say hello',
         target: 'user',
       },
     ]);
+
+    expect(result.todos).toEqual([
+      { content: 'Review action items', finished: false },
+      { content: 'Prepare summary', finished: true },
+    ]);
+
+    expect(logSpy).toHaveBeenCalledWith('Supervisor TODO list:', [
+      { content: 'Review action items', finished: false },
+      { content: 'Prepare summary', finished: true },
+    ]);
+    logSpy.mockRestore();
   });
 
   it('should fall back to streaming decision when structured response parsing fails', async () => {
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
     vi.mocked(chatService.getStructuredCompletion).mockRejectedValue(new SyntaxError('Unexpected token i'));
     vi.mocked(chatService.fetchPresetTaskResult).mockImplementation(async ({ onFinish }) => {
       const payload = [
         '```json',
-        '[',
-        '  {',
-        '    "id": "agent-2",',
-        '    "instruction": "Fallback",',
-        '    "target": "user"',
-        '  }',
-        ']',
+        '{',
+        '  "decisions": [',
+        '    {',
+        '      "id": "agent-2",',
+        '      "instruction": "Fallback",',
+        '      "target": "user"',
+        '    }',
+        '  ],',
+        '  "todos": [',
+        '    {',
+        '      "content": "Follow up with the user",',
+        '      "finished": false',
+        '    }',
+        '  ]',
+        '}',
         '```',
         '',
       ].join('\n');
 
-      await onFinish?.(payload);
+      await onFinish?.(payload, {} as any);
     });
 
-    const decisions = await supervisor.makeDecision({ ...baseContext });
+    const result = await supervisor.makeDecision({ ...baseContext });
 
     expect(chatService.fetchPresetTaskResult).toHaveBeenCalled();
-    expect(decisions).toEqual([
+    expect(result.decisions).toEqual([
       {
         id: 'agent-2',
         instruction: 'Fallback',
         target: 'user',
       },
     ]);
+
+    expect(result.todos).toEqual([
+      { content: 'Follow up with the user', finished: false },
+    ]);
+
+    expect(logSpy).toHaveBeenCalledWith('Supervisor TODO list:', [
+      { content: 'Follow up with the user', finished: false },
+    ]);
+    logSpy.mockRestore();
   });
 
   it('should wrap non-recoverable errors from structured completion', async () => {

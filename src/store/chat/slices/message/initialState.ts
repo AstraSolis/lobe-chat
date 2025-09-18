@@ -1,6 +1,8 @@
 import { ChatGroupAgentItem, ChatGroupItem } from '@/database/schemas/chatGroup';
 import { ChatMessage } from '@/types/message';
 
+import type { SupervisorTodoItem } from './supervisor';
+
 export interface ChatMessageState {
   /**
    * @title 当前活动的会话
@@ -50,6 +52,10 @@ export interface ChatMessageState {
    * Supervisor decision loading states
    */
   supervisorDecisionLoading: string[];
+  /**
+   * Supervisor todo list map keyed by session/topic combination
+   */
+  supervisorTodos: Record<string, SupervisorTodoItem[]>;
 }
 
 export const initialMessageState: ChatMessageState = {
@@ -66,4 +72,5 @@ export const initialMessageState: ChatMessageState = {
   supervisorDebounceTimers: {},
   supervisorDecisionAbortControllers: {},
   supervisorDecisionLoading: [],
+  supervisorTodos: {},
 };

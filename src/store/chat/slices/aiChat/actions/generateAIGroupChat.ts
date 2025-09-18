@@ -303,7 +303,13 @@ export const chatAiGroupChat: StateCreator<
   // ========= ↓ Group Chat Internal Methods ↓ ========== //
 
   internal_triggerSupervisorDecision: async (groupId: string, isManualTrigger: boolean = false) => {
-    const { messagesMap, internal_toggleSupervisorLoading, activeTopicId } = get();
+    const {
+      messagesMap,
+      internal_toggleSupervisorLoading,
+      internal_updateSupervisorTodos,
+      supervisorTodos,
+      activeTopicId,
+    } = get();
 
     const messages = messagesMap[messageMapKey(groupId, activeTopicId)] || [];
     const agents = sessionSelectors.currentGroupAgents(useSessionStore.getState());
@@ -346,6 +352,8 @@ export const chatAiGroupChat: StateCreator<
     const realUserName = userProfileSelectors.nickName(userStoreState) || 'User';
 
     try {
+      const todoKey = messageMapKey(groupId, activeTopicId);
+
       const context: SupervisorContext = {
         allowDM: groupConfig.allowDM,
         availableAgents: agents!,
@@ -356,9 +364,12 @@ export const chatAiGroupChat: StateCreator<
         userName: realUserName,
         systemPrompt: groupConfig.systemPrompt,
         abortController,
+        todoList: supervisorTodos?.[todoKey] || [],
       };
 
-      const decisions: SupervisorDecisionList = await supervisor.makeDecision(context);
+      const { decisions, todos } = await supervisor.makeDecision(context);
+
+      internal_updateSupervisorTodos(groupId, activeTopicId, todos);
 
       console.log('Supervisor decisions:', decisions);
 

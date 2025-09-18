@@ -13,12 +13,21 @@ export interface SupervisorDecision {
 
 export type SupervisorDecisionList = SupervisorDecision[]; // Empty array = stop conversation
 
-interface SupervisorDecisionResponse {
-  decisions: Array<{
-    id: string;
-    instruction?: string;
-    target?: string;
-  }>;
+export interface SupervisorTodoItem {
+  content: string;
+  finished: boolean;
+}
+
+export interface SupervisorDecisionResult {
+  decisions: SupervisorDecisionList;
+  todos: SupervisorTodoItem[];
+}
+
+export type SupervisorToolName = 'create_todo' | 'finish_todo' | 'trigger_agent';
+
+export interface SupervisorToolCall {
+  tool_name: SupervisorToolName;
+  parameter?: unknown;
 }
 
 export interface SupervisorContext {
@@ -30,6 +39,7 @@ export interface SupervisorContext {
   model: string;
   provider: string;
   systemPrompt?: string;
+  todoList?: SupervisorTodoItem[];
   userName?: string;
 }
 
@@ -40,12 +50,12 @@ export class GroupChatSupervisor {
   /**
    * Make decision on who should speak next
    */
-  async makeDecision(context: SupervisorContext): Promise<SupervisorDecisionList> {
-    const { messages, availableAgents, userName, systemPrompt, allowDM } = context;
+  async makeDecision(context: SupervisorContext): Promise<SupervisorDecisionResult> {
+    const { messages, availableAgents, userName, systemPrompt, allowDM, todoList } = context;
 
     // If no agents available, stop conversation
     if (availableAgents.length === 0) {
-      return [];
+      return { decisions: [], todos: [] };
     }
 
     try {
@@ -59,14 +69,16 @@ export class GroupChatSupervisor {
           .map((agent) => ({ id: agent.id!, title: agent.title })),
         conversationHistory,
         systemPrompt,
+        todoList,
         userName,
       });
 
       const response = await this.callLLMForDecision(supervisorPrompt, context);
+      const result = this.parseSupervisorResponse(response, availableAgents, context);
 
-      const decision = this.parseDecision(response, availableAgents);
+      console.log('Supervisor TODO list:', result.todos);
 
-      return decision;
+      return result;
     } catch (error) {
       // Re-throw the error so it can be caught and displayed to the user via toast
       throw new Error(
@@ -81,7 +93,7 @@ export class GroupChatSupervisor {
   private async callLLMForDecision(
     prompt: string,
     context: SupervisorContext,
-  ): Promise<SupervisorDecisionResponse | string> {
+  ): Promise<SupervisorToolCall[] | string> {
     const supervisorConfig = {
       model: context.model,
       provider: context.provider,
@@ -90,36 +102,32 @@ export class GroupChatSupervisor {
 
     const responseFormat = {
       json_schema: {
-        name: 'supervisor_decision_response',
+        name: 'supervisor_tool_call_response',
         schema: {
-          additionalProperties: false,
-          properties: {
-            decisions: {
-              items: {
-                additionalProperties: false,
-                properties: {
-                  id: { description: 'ID of the agent who should speak', type: 'string' },
-                  instruction: { description: 'Optional instruction for the agent', type: 'string' },
-                  target: {
-                    description: 'Target agent ID or "user" for DM',
-                    type: 'string',
-                  },
-                },
-                required: ['id'],
-                type: 'object',
+          items: {
+            additionalProperties: false,
+            properties: {
+              parameter: {
+                description: 'Input payload for the tool invocation',
+                type: ['object', 'string', 'number', 'boolean', 'array', 'null'],
               },
-              type: 'array',
+              tool_name: {
+                description: 'Name of the tool to invoke',
+                enum: ['create_todo', 'finish_todo', 'trigger_agent'],
+                type: 'string',
+              },
             },
+            required: ['tool_name'],
+            type: 'object',
           },
-          required: ['decisions'],
-          type: 'object',
+          type: 'array',
         },
       },
       type: 'json_schema',
     } as const;
 
     try {
-      const response = await chatService.getStructuredCompletion<SupervisorDecisionResponse>(
+      const response = await chatService.getStructuredCompletion<SupervisorToolCall[]>(
         {
           messages: [{ content: prompt, role: 'user' }],
           response_format: responseFormat,
@@ -130,8 +138,6 @@ export class GroupChatSupervisor {
           signal: context.abortController?.signal,
         },
       );
-
-      console.log('Supervisor LLM response:', response);
 
       return response;
     } catch (err) {
@@ -218,27 +224,384 @@ export class GroupChatSupervisor {
     return res;
   }
 
-  /**
-   * Parse LLM response into decision
-   */
-  private parseDecision(
-    response: SupervisorDecisionResponse | string,
+  private parseSupervisorResponse(
+    response: SupervisorToolCall[] | string,
+    availableAgents: GroupMemberWithAgent[],
+    context: SupervisorContext,
+  ): SupervisorDecisionResult {
+    const previousTodos = (context.todoList || []).map((item) => ({ ...item }));
+    let primaryError: unknown = null;
+
+    try {
+      const toolCalls = this.normalizeToolCalls(response);
+      return this.processToolCalls(toolCalls, previousTodos, availableAgents, context);
+    } catch (error) {
+      primaryError = error;
+    }
+
+    try {
+      const todos = this.extractLegacyTodoList(response, previousTodos);
+      const decisions = this.parseLegacyDecisions(response, availableAgents);
+      return { decisions, todos };
+    } catch (legacyError) {
+      const primaryMessage =
+        primaryError === '__LEGACY_FORMAT__'
+          ? 'legacy format detected'
+          : primaryError instanceof Error
+          ? primaryError.message
+          : String(primaryError);
+      const legacyMessage =
+        legacyError instanceof Error ? legacyError.message : String(legacyError);
+
+      throw new Error(`Failed to parse supervisor response: ${primaryMessage} | ${legacyMessage}`);
+    }
+  }
+
+  private normalizeToolCalls(response: SupervisorToolCall[] | string): SupervisorToolCall[] {
+    const sanitizeList = (items: unknown): SupervisorToolCall[] => {
+      if (!Array.isArray(items)) return [];
+      return items
+        .map((item) => this.sanitizeToolCall(item))
+        .filter((item): item is SupervisorToolCall => !!item);
+    };
+
+    if (Array.isArray(response)) {
+      return sanitizeList(response);
+    }
+
+    if (typeof response === 'string') {
+      const parsed = this.tryParseJson(response);
+
+      if (Array.isArray(parsed)) {
+        return sanitizeList(parsed);
+      }
+
+      if (parsed && typeof parsed === 'object') {
+        const toolCalls = (parsed as { tool_calls?: unknown }).tool_calls;
+        if (Array.isArray(toolCalls)) {
+          return sanitizeList(toolCalls);
+        }
+
+        if ('decisions' in parsed || 'todos' in parsed) {
+          throw new Error('__LEGACY_FORMAT__');
+        }
+
+        const singleCall = this.sanitizeToolCall(parsed);
+        if (singleCall) {
+          return [singleCall];
+        }
+      }
+
+      const fallbackArray = this.extractJsonArrayFromString(response);
+      if (Array.isArray(fallbackArray)) {
+        return sanitizeList(fallbackArray);
+      }
+
+      throw new Error('No tool calls array found in response');
+    }
+
+    throw new Error('Unsupported supervisor response format');
+  }
+
+  private sanitizeToolCall(raw: any): SupervisorToolCall | null {
+    if (!raw) return null;
+
+    const functionCallName =
+      typeof raw?.function === 'object' && typeof raw?.function?.name === 'string'
+        ? raw.function.name
+        : null;
+
+    const potentialName =
+      typeof raw.tool_name === 'string'
+        ? raw.tool_name
+        : typeof raw.toolName === 'string'
+        ? raw.toolName
+        : typeof raw.name === 'string'
+        ? raw.name
+        : functionCallName;
+
+    if (!potentialName) return null;
+
+    const normalizedName = potentialName.trim().toLowerCase().replace(/[-\s]+/g, '_');
+    if (!['create_todo', 'finish_todo', 'trigger_agent'].includes(normalizedName)) {
+      return null;
+    }
+
+    let parameter: unknown;
+
+    if (raw.parameter !== undefined) parameter = raw.parameter;
+    else if (raw.parameters !== undefined) parameter = raw.parameters;
+    else if (raw.args !== undefined) parameter = raw.args;
+    else if (raw.arguments !== undefined) parameter = raw.arguments;
+    else if (raw.function && 'arguments' in raw.function) parameter = raw.function.arguments;
+
+    if (typeof parameter === 'string') {
+      const parsedParameter = this.tryParseJson(parameter);
+      if (parsedParameter !== undefined) {
+        parameter = parsedParameter;
+      }
+    }
+
+    return {
+      parameter,
+      tool_name: normalizedName as SupervisorToolName,
+    };
+  }
+
+  private processToolCalls(
+    toolCalls: SupervisorToolCall[],
+    previousTodos: SupervisorTodoItem[],
+    availableAgents: GroupMemberWithAgent[],
+    context: SupervisorContext,
+  ): SupervisorDecisionResult {
+    if (toolCalls.length === 0) {
+      return { decisions: [], todos: previousTodos };
+    }
+
+    const todos = previousTodos.map((todo) => ({ ...todo }));
+    const decisions: SupervisorDecisionList = [];
+
+    toolCalls.forEach((call) => {
+      switch (call.tool_name) {
+        case 'create_todo':
+          this.applyCreateTodo(todos, call.parameter);
+          break;
+        case 'finish_todo':
+          this.applyFinishTodo(todos, call.parameter);
+          break;
+        case 'trigger_agent': {
+          const decision = this.buildDecisionFromTool(call.parameter, availableAgents, context);
+          if (decision) {
+            decisions.push(decision);
+          }
+          break;
+        }
+      }
+    });
+
+    return { decisions, todos };
+  }
+
+  private applyCreateTodo(targetTodos: SupervisorTodoItem[], parameter: unknown) {
+    if (Array.isArray(parameter)) {
+      parameter.forEach((item) => this.applyCreateTodo(targetTodos, item));
+      return;
+    }
+
+    const content = this.extractTodoContent(parameter);
+    if (!content) return;
+
+    const exists = targetTodos.some(
+      (todo) => todo.content.trim().toLowerCase() === content.toLowerCase() && !todo.finished,
+    );
+
+    if (!exists) {
+      targetTodos.push({ content, finished: false });
+    }
+  }
+
+  private extractTodoContent(parameter: unknown): string | null {
+    if (typeof parameter === 'string') {
+      const trimmed = parameter.trim();
+      return trimmed ? trimmed : null;
+    }
+
+    if (!parameter || typeof parameter !== 'object') return null;
+
+    const payload = parameter as Record<string, unknown>;
+    const candidates: unknown[] = [
+      payload.content,
+      payload.title,
+      payload.task,
+      payload.text,
+      payload.message,
+    ];
+
+    for (const candidate of candidates) {
+      if (typeof candidate === 'string' && candidate.trim()) {
+        return candidate.trim();
+      }
+    }
+
+    return null;
+  }
+
+  private applyFinishTodo(targetTodos: SupervisorTodoItem[], parameter: unknown) {
+    if (Array.isArray(parameter)) {
+      parameter.forEach((item) => this.applyFinishTodo(targetTodos, item));
+      return;
+    }
+
+    if (parameter === false) return;
+
+    if (parameter === true || parameter === undefined || parameter === null) {
+      this.finishNextUnfinished(targetTodos);
+      return;
+    }
+
+    if (typeof parameter === 'number') {
+      this.finishTodoByIndex(targetTodos, parameter);
+      return;
+    }
+
+    if (typeof parameter === 'string') {
+      this.finishTodoByContent(targetTodos, parameter);
+      return;
+    }
+
+    if (typeof parameter === 'object') {
+      const payload = parameter as Record<string, unknown>;
+
+      if ('all' in payload && payload.all === true) {
+        targetTodos.forEach((todo) => (todo.finished = true));
+        return;
+      }
+
+      let handled = false;
+
+      if ('index' in payload && typeof payload.index === 'number') {
+        this.finishTodoByIndex(targetTodos, payload.index);
+        handled = true;
+      }
+
+      if ('indices' in payload && Array.isArray(payload.indices)) {
+        payload.indices.forEach((idx) => {
+          if (typeof idx === 'number') this.finishTodoByIndex(targetTodos, idx);
+        });
+        handled = true;
+      }
+
+      if ('content' in payload && typeof payload.content === 'string') {
+        this.finishTodoByContent(targetTodos, payload.content);
+        handled = true;
+      }
+
+      if ('contents' in payload && Array.isArray(payload.contents)) {
+        payload.contents.forEach((item) => {
+          if (typeof item === 'string') this.finishTodoByContent(targetTodos, item);
+        });
+        handled = true;
+      }
+
+      if ('next' in payload && payload.next === true) {
+        this.finishNextUnfinished(targetTodos);
+        handled = true;
+      }
+
+      if (!handled) {
+        this.finishNextUnfinished(targetTodos);
+      }
+
+      return;
+    }
+
+    this.finishNextUnfinished(targetTodos);
+  }
+
+  private finishNextUnfinished(targetTodos: SupervisorTodoItem[]) {
+    const todo = targetTodos.find((item) => !item.finished);
+    if (todo) todo.finished = true;
+  }
+
+  private finishTodoByIndex(targetTodos: SupervisorTodoItem[], index: number) {
+    if (!Number.isInteger(index)) return;
+    if (index < 0 || index >= targetTodos.length) return;
+    targetTodos[index].finished = true;
+  }
+
+  private finishTodoByContent(targetTodos: SupervisorTodoItem[], content: string) {
+    const normalizedContent = content.trim().toLowerCase();
+    if (!normalizedContent) return;
+
+    const exactMatch = targetTodos.find(
+      (todo) => todo.content.trim().toLowerCase() === normalizedContent,
+    );
+    if (exactMatch) {
+      exactMatch.finished = true;
+      return;
+    }
+
+    const partialMatch = targetTodos.find((todo) =>
+      todo.content.toLowerCase().includes(normalizedContent),
+    );
+    if (partialMatch) {
+      partialMatch.finished = true;
+    }
+  }
+
+  private buildDecisionFromTool(
+    parameter: unknown,
+    availableAgents: GroupMemberWithAgent[],
+    context: SupervisorContext,
+  ): SupervisorDecision | null {
+    if (typeof parameter === 'string') {
+      return this.createDecisionFromPayload({ id: parameter }, availableAgents, context);
+    }
+
+    if (!parameter || typeof parameter !== 'object') return null;
+
+    return this.createDecisionFromPayload(
+      parameter as Record<string, unknown>,
+      availableAgents,
+      context,
+    );
+  }
+
+  private createDecisionFromPayload(
+    payload: Record<string, unknown>,
+    availableAgents: GroupMemberWithAgent[],
+    context: SupervisorContext,
+  ): SupervisorDecision | null {
+    const idCandidate = payload.id || payload.agentId || payload.speaker;
+    if (typeof idCandidate !== 'string') return null;
+
+    const agentExists = availableAgents.some((agent) => agent.id === idCandidate);
+    if (!agentExists) return null;
+
+    const instruction =
+      typeof payload.instruction === 'string'
+        ? payload.instruction
+        : typeof payload.message === 'string'
+        ? payload.message
+        : undefined;
+
+    let target: string | undefined;
+    if (typeof payload.target === 'string') target = payload.target;
+    else if (typeof payload.recipient === 'string') target = payload.recipient;
+    else if (typeof payload.to === 'string') target = payload.to;
+
+    if (target && target !== 'user') {
+      const targetExists = availableAgents.some((agent) => agent.id === target);
+      if (!targetExists) target = undefined;
+    }
+
+    if (context.allowDM === false) {
+      target = undefined;
+    }
+
+    return {
+      id: idCandidate,
+      instruction: instruction || undefined,
+      target: target || undefined,
+    };
+  }
+
+  private parseLegacyDecisions(
+    response: SupervisorToolCall[] | string,
     availableAgents: GroupMemberWithAgent[],
   ): SupervisorDecisionList {
     try {
-      const decisions = this.normalizeDecisions(response);
+      const decisions = this.normalizeLegacyDecisions(response);
 
       if (!Array.isArray(decisions)) {
         throw new Error('Response must include a decisions array');
       }
 
-      // Empty array = stop conversation
       if (decisions.length === 0) {
         return [];
       }
 
-      // Filter and validate the response objects
-      const normalizedDecisions = decisions
+      return decisions
         .filter(
           (item: any) =>
             typeof item === 'object' &&
@@ -248,32 +611,128 @@ export class GroupChatSupervisor {
         )
         .map((item: any) => ({
           id: item.id,
-          instruction: item.instruction || undefined,
-          target: item.target || undefined,
+          instruction: typeof item.instruction === 'string' ? item.instruction : undefined,
+          target: typeof item.target === 'string' ? item.target : undefined,
         }));
-
-      return normalizedDecisions;
     } catch (error) {
-      // Re-throw the error with more context so it can be caught and displayed to the user via toast
       throw new Error(
         `Failed to parse supervisor decision: ${error instanceof Error ? error.message : String(error)}`,
       );
     }
   }
 
-  private normalizeDecisions(response: SupervisorDecisionResponse | string) {
+  private normalizeLegacyDecisions(response: SupervisorToolCall[] | string) {
     if (typeof response === 'string') {
-      const startIndex = response.indexOf('[');
-      const endIndex = response.lastIndexOf(']');
-      if (startIndex === -1 || endIndex === -1 || endIndex < startIndex) {
+      const parsed = this.extractJsonObjectFromString(response);
+
+      if (Array.isArray(parsed)) return parsed;
+      if (parsed && Array.isArray((parsed as any).decisions)) return (parsed as any).decisions;
+
+      const decisionsArray = this.extractJsonArrayFromString(response);
+      if (!Array.isArray(decisionsArray)) {
         throw new Error('No JSON array found in response');
       }
 
-      const jsonText = response.slice(startIndex, endIndex + 1);
-      return JSON.parse(jsonText);
+      return decisionsArray;
     }
 
-    return response?.decisions;
+    if (response && typeof response === 'object' && !Array.isArray(response)) {
+      const decisions = (response as { decisions?: unknown }).decisions;
+      if (Array.isArray(decisions)) return decisions;
+    }
+
+    return null;
+  }
+
+  private extractLegacyTodoList(
+    response: SupervisorToolCall[] | string,
+    _previousTodos: SupervisorTodoItem[],
+  ): SupervisorTodoItem[] {
+    const normalize = (items: unknown): SupervisorTodoItem[] | undefined => {
+      if (items === undefined) return undefined;
+      if (!Array.isArray(items)) return [];
+
+      return items
+        .filter((item): item is SupervisorTodoItem =>
+          typeof item === 'object' &&
+          item !== null &&
+          typeof (item as any).content === 'string' &&
+          typeof (item as any).finished === 'boolean',
+        )
+        .map((item) => ({
+          content: (item as SupervisorTodoItem).content,
+          finished: (item as SupervisorTodoItem).finished,
+        }));
+    };
+
+    if (typeof response === 'string') {
+      const parsed = this.extractJsonObjectFromString(response);
+      if (parsed) {
+        const normalized = normalize((parsed as { todos?: unknown }).todos);
+        if (normalized !== undefined) return normalized;
+      }
+
+      return [];
+    }
+
+    if (response && typeof response === 'object' && !Array.isArray(response)) {
+      const normalized = normalize((response as { todos?: unknown }).todos);
+      if (normalized !== undefined) return normalized;
+    }
+
+    return [];
+  }
+
+  private tryParseJson(value: string): unknown {
+    if (!value) return undefined;
+
+    try {
+      return JSON.parse(value);
+    } catch {}
+
+    const objectResult = this.extractJsonObjectFromString(value);
+    if (objectResult !== null) return objectResult;
+
+    return this.extractJsonArrayFromString(value) ?? undefined;
+  }
+
+  private extractJsonObjectFromString(response: string) {
+    const trimmed = response.trim();
+
+    try {
+      return JSON.parse(trimmed);
+    } catch {}
+
+    const startIndex = response.indexOf('{');
+    const endIndex = response.lastIndexOf('}');
+
+    if (startIndex === -1 || endIndex === -1 || endIndex < startIndex) {
+      return null;
+    }
+
+    const jsonText = response.slice(startIndex, endIndex + 1);
+
+    try {
+      return JSON.parse(jsonText);
+    } catch {
+      return null;
+    }
+  }
+
+  private extractJsonArrayFromString(response: string) {
+    const startIndex = response.indexOf('[');
+    const endIndex = response.lastIndexOf(']');
+    if (startIndex === -1 || endIndex === -1 || endIndex < startIndex) {
+      return null;
+    }
+
+    const jsonText = response.slice(startIndex, endIndex + 1);
+    try {
+      return JSON.parse(jsonText);
+    } catch (error) {
+      console.error('Failed to parse JSON array from supervisor response:', error);
+      return null;
+    }
   }
 
   /**

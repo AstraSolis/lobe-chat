@@ -5,6 +5,11 @@ export interface GroupMemberInfo {
   title: string;
 }
 
+export interface SupervisorTodoItem {
+  content: string;
+  finished: boolean;
+}
+
 const buildGroupMembersTag = (members: GroupMemberInfo[]): string => {
   if (!members || members.length === 0) return '';
   return `<group_members>\n${JSON.stringify(members, null, 2)}\n</group_members>`;
@@ -49,16 +54,15 @@ export const buildGroupChatSystemPrompt = ({
   const agentTitle = groupMembers.find((m) => m.id === agentId)?.title || 'Agent';
 
   const prompt = `${baseSystemRole}
-You are participating in a group chat in real world.
+You are participating in a group chat in real world as ${agentId} (${agentTitle}).
 
-Guidelines:
-- Stay in character as ${agentId} (${agentTitle})
+RULES:
+
 - Be concise and natural, behave like a real person
 - Engage naturally in the conversation flow
 - The group supervisor will decide whether to send it privately or publicly, so you just need to say the actuall content, even it's a DM to a specific member. Do not pretend you've sent it.
 - Be collaborative and build upon others' responses when appropriate
 - Keep your responses concise and relevant to the ongoing discussion
-- Each message should no more than 100 words
 
 ${membersTag}
 
@@ -73,13 +77,20 @@ export interface SupervisorPromptParams {
   availableAgents: Array<{ id: string; title?: string | null }>;
   conversationHistory: string;
   systemPrompt?: string;
+  todoList?: SupervisorTodoItem[];
   userName?: string;
 }
+
+const buildTodoListTag = (todoList?: SupervisorTodoItem[]): string => {
+  const serialized = JSON.stringify(todoList && todoList.length > 0 ? todoList : [], null, 2);
+  return `<todo_list>\n${serialized}\n</todo_list>`;
+};
 
 export const buildSupervisorPrompt = ({
   allowDM = true,
   availableAgents,
   conversationHistory,
+  todoList,
   systemPrompt,
   userName,
 }: SupervisorPromptParams): string => {
@@ -101,24 +112,32 @@ export const buildSupervisorPrompt = ({
     .map((member) => `  <member id="${member.id}" name="${member.name}" />`)
     .join('\n');
 
+  const todoListTag = buildTodoListTag(todoList);
+
   // Build rules and examples based on allowDM setting
   const dmRules = allowDM
-    ? `- If a response should be a direct message to a specific member, include a "target" field with the target member ID or "user"
-- If no "target" field is provided, the response will be a group message visible to everyone`
-    : `- All responses will be group messages visible to everyone (DMs are not allowed in this group)`;
-
-  const dmExamples = allowDM
-    ? `- Group responses: [{"id": "agt_01"}]
-- With instructions: [{"id": "agt_01", "instruction": "Outline the main points from the article"}]
-- DM responses: [{"id": "agt_01", "target": "agt_02"}, {"id": "agt_04", "target": "user"}]
-- Mixed responses: [{"id": "agt_01"}, {"id": "agt_02", "target": "user", "instruction": "Provide a summary"}]`
-    : `- Group responses: [{"id": "agt_01"}]
-- With instructions: [{"id": "agt_01", "instruction": "Outline the main points from the article"}]
-- Multiple agents: [{"id": "agt_01"}, {"id": "agt_02", "instruction": "Provide a summary"}]`;
+    ? `- Direct messages are allowed. When an agent should DM someone, set "target" to the recipient agent id or "user".
+- If no "target" is provided, the message will be sent to the whole group.`
+    : `- DMs are disabled. Do not provide a "target" field; all messages are public.`;
 
   const naturalFlowRule = allowDM
-    ? `- Your goal is to make the conversation as natural as possible. For example, if user DM to an agent, the agent is likely to respond to the user privately too`
-    : `- Your goal is to make the conversation as natural as possible in group format`;
+    ? `- Keep the conversation natural. If a member DM'd someone, consider replying privately to the same participant when appropriate.`
+    : `- Keep the conversation natural in the group setting.`;
+
+  const triggerAgentExample = allowDM
+    ? '{"tool_name": "trigger_agent", "parameter": {"id": "agt_01", "target": "user", "instruction": "Thank them privately for the update"}}'
+    : '{"tool_name": "trigger_agent", "parameter": {"id": "agt_01", "instruction": "Summarize the main points for everyone"}}';
+
+  const exampleArray = allowDM
+    ? `[
+  {"tool_name": "create_todo", "parameter": {"content": "Summarize outcomes before the meeting ends"}},
+  {"tool_name": "finish_todo", "parameter": {"content": "Review agenda"}},
+  ${triggerAgentExample}
+]`
+    : `[
+  {"tool_name": "create_todo", "parameter": "Share the highlights with the team"},
+  ${triggerAgentExample}
+]`;
 
   const prompt = `
 You are a conversation supervisor for a group chat with multiple AI agents. Your role is to decide which agents should respond next based on the conversation context. Here's the group detail:
@@ -135,16 +154,27 @@ ${memberList}
 ${conversationHistory}
 </conversation_history>
 
-Rules:
-- Share your decision on who should respond next in a concise format
-${dmRules}
-- You can optionally include an "instruction" field to give specific guidance in English to the agent about what they should focus on or how they should respond
-- If the conversation seems complete, or no one needs reply, return empty array []
-${naturalFlowRule}
+${todoListTag}
 
-Examples:
-${dmExamples}
-- Stop conversation: []
+RULES:
+
+- You MUST respond with a JSON array. Each item represents invoking one of the available tools below.
+- Available tools:
+  - "create_todo": add a new todo. Parameter can be a string or an object like {"content": "..."}. Always create actionable, brief todos.
+  - "finish_todo": mark todos as completed. Use true to finish the next unfinished item, {"index": 0} for a specific position, or {"content": "..."} to match by text. Use {"all": true} to close everything.
+  - "trigger_agent": ask an agent to speak. Parameter must be {"id": "agentId"} with optional "instruction" and optional "target".
+- Execute tools in the order they should happen. Return [] when no further action is needed.
+- Only reference agents from the member list. Never invent new IDs.
+- ${dmRules}
+- ${naturalFlowRule}
+- Provide concise English instructions when guiding agents via "instruction".
+- Keep todo items synchronized with the context. Finish or create todos as progress changes.
+
+RESPONSE FORMAT:
+
+- JSON array only, nothing else. Example:
+${exampleArray}
+- Stop the conversation by returning [] (an empty array).
 
 Now share your decision.
 `;
