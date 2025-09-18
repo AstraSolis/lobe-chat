@@ -7,5 +7,6 @@ export interface ChatGroupConfig {
   responseOrder?: 'sequential' | 'natural';
   responseSpeed?: 'slow' | 'medium' | 'fast';
   revealDM?: boolean;
+  scene: 'casual' | 'productive';
   systemPrompt?: string;
 }

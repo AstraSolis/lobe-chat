@@ -32,9 +32,6 @@ export const chatGroups = pgTable(
     title: text('title'),
     description: text('description'),
 
-    /**
-     * Group configuration
-     */
     config: jsonb('config').$type<ChatGroupConfig>(),
 
     clientId: text('client_id'),
