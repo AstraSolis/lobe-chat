@@ -1,7 +1,7 @@
-import { getChatStoreState } from '@/store/chat';
-import { chatSelectors } from '@/store/chat/selectors';
 import { getAgentStoreState } from '@/store/agent';
 import { agentSelectors } from '@/store/agent/selectors';
+import { getChatStoreState } from '@/store/chat';
+import { chatSelectors } from '@/store/chat/selectors';
 import { ChatMessage } from '@/types/message';
 
 export interface AgentWorkflowContext {
@@ -72,12 +72,12 @@ export class AgentRuntimeService {
   private async analyzeUserRequest(
     userMessage: string,
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    _messages: ChatMessage[]
+    _messages: ChatMessage[],
   ): Promise<AgentWorkflowStep> {
     return {
       content: `Analyzing request: "${userMessage}"`,
       id: 'analysis',
-      reasoning: 'Understanding the user\'s intent and context from previous conversation.',
+      reasoning: "Understanding the user's intent and context from previous conversation.",
       status: 'completed',
       type: 'analysis',
     };
@@ -87,7 +87,7 @@ export class AgentRuntimeService {
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
     _analysisStep: AgentWorkflowStep,
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    _context: AgentWorkflowContext
+    _context: AgentWorkflowContext,
   ): Promise<AgentWorkflowStep> {
     return {
       actions: ['Process user request', 'Generate appropriate response'],
@@ -102,7 +102,7 @@ export class AgentRuntimeService {
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
     _planningStep: AgentWorkflowStep,
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    _context: AgentWorkflowContext
+    _context: AgentWorkflowContext,
   ): Promise<AgentWorkflowStep[]> {
     const executionStep: AgentWorkflowStep = {
       content: 'Executing planned actions',
@@ -116,7 +116,7 @@ export class AgentRuntimeService {
 
   private async generateFinalResponse(
     executionSteps: AgentWorkflowStep[],
-    context: AgentWorkflowContext
+    context: AgentWorkflowContext,
   ): Promise<AgentWorkflowStep> {
     // This is where we would integrate with the existing message generation
     // For now, return a placeholder response
@@ -142,7 +142,7 @@ export function isAgentModeEnabled(): boolean {
  */
 export function createAgentWorkflowContext(
   userMessage: string,
-  files?: string[]
+  files?: string[],
 ): AgentWorkflowContext {
   const chatStore = getChatStoreState();
   const messages = chatSelectors.mainAIChats(chatStore);
