@@ -3,7 +3,7 @@ import debug from 'debug';
 import { produce } from 'immer';
 import { StateCreator } from 'zustand/vanilla';
 
-import { StreamEvent, agentClientService } from '@/services/agent/client';
+import { StreamEvent, agentClientService } from '@/services/agentRuntime';
 import { messageService } from '@/services/message';
 import { getAgentStoreState } from '@/store/agent';
 import { agentChatConfigSelectors, agentSelectors } from '@/store/agent/slices/chat';
@@ -324,8 +324,6 @@ export const agentSlice: StateCreator<ChatStore, [['zustand/devtools', never]], 
       message,
     });
 
-    const { createAgentWorkflowContext } = await import('@/services/agentRuntime');
-
     set({ isCreatingMessage: true }, false, n('creatingMessage/start(agent)'));
 
     const fileIdList = files?.map((f: any) => f.id);
@@ -353,9 +351,6 @@ export const agentSlice: StateCreator<ChatStore, [['zustand/devtools', never]], 
     }
 
     set({ isCreatingMessage: false }, false, n('creatingMessage/end'));
-
-    // Create agent workflow context
-    createAgentWorkflowContext(message, fileIdList);
 
     // Create a placeholder AI message for the agent response
     const agentMessageId = get().internal_createTmpMessage({
