@@ -90,7 +90,7 @@ describe('AgentStateManager', () => {
 
       expect(mockRedis.setex).toHaveBeenCalledWith(
         'agent_runtime_state:test-session-1',
-        7 * 24 * 3600, // DEFAULT_TTL
+        24 * 3600, // DEFAULT_TTL
         JSON.stringify(mockState),
       );
     });
@@ -203,7 +203,7 @@ describe('AgentStateManager', () => {
 
       expect(mockPipeline.setex).toHaveBeenCalledWith(
         'agent_runtime_state:test-session-1',
-        7 * 24 * 3600,
+        24 * 3600,
         JSON.stringify(mockStepResult.newState),
       );
 
@@ -386,10 +386,7 @@ describe('AgentStateManager', () => {
         }),
       );
 
-      expect(mockRedis.expire).toHaveBeenCalledWith(
-        'agent_runtime_meta:test-session-1',
-        7 * 24 * 3600,
-      );
+      expect(mockRedis.expire).toHaveBeenCalledWith('agent_runtime_meta:test-session-1', 24 * 3600);
     });
 
     it('should create metadata without optional fields', async () => {
