@@ -7,7 +7,6 @@ import { produce } from 'immer';
 import { SWRResponse, mutate } from 'swr';
 import { StateCreator } from 'zustand/vanilla';
 
-import { ChatGroupAgentItem, ChatGroupItem } from '@/database/schemas/chatGroup';
 import { useClientDataSWR } from '@/libs/swr';
 import { messageService } from '@/services/message';
 import { topicService } from '@/services/topic';
@@ -36,7 +35,6 @@ import type { ChatStoreState } from '../../initialState';
 import { chatSelectors } from '../../selectors';
 import { preventLeavingFn, toggleBooleanList } from '../../utils';
 import { MessageDispatch, messagesReducer } from './reducer';
-import type { SupervisorTodoItem } from './supervisor';
 
 const n = setNamespace('m');
 
@@ -145,26 +143,9 @@ export interface ChatMessageAction {
   ) => AbortController | undefined;
 
   /**
-   * Update group maps
-   */
-  internal_updateGroupMaps: (groups: ChatGroupItem[]) => void;
-  /**
-   * Update group agent maps
-   */
-  internal_updateGroupAgentMaps: (groupId: string, agents: ChatGroupAgentItem[]) => void;
-  /**
    * Update active session type
    */
   internal_updateActiveSessionType: (sessionType?: 'agent' | 'group') => void;
-
-  /**
-   * Update supervisor todo list for a group/topic
-   */
-  internal_updateSupervisorTodos: (
-    groupId: string,
-    topicId: string | null | undefined,
-    todos: SupervisorTodoItem[],
-  ) => void;
   /**
    * Update active session ID with cleanup of pending operations
    */
@@ -556,42 +537,6 @@ export const chatMessage: StateCreator<
       window.removeEventListener('beforeunload', preventLeavingFn);
     }
   },
-
-  internal_updateGroupMaps: (groups: ChatGroupItem[]) => {
-    const nextGroupMaps = groups.reduce(
-      (acc, group) => {
-        acc[group.id] = group;
-        return acc;
-      },
-      {} as Record<string, ChatGroupItem>,
-    );
-
-    if (isEqual(nextGroupMaps, get().groupMaps)) return;
-
-    set({ groupMaps: nextGroupMaps }, false, n('updateGroupMaps'));
-  },
-
-  internal_updateGroupAgentMaps: (groupId: string, agents: ChatGroupAgentItem[]) => {
-    set(
-      produce((state: ChatStoreState) => {
-        state.groupAgentMaps[groupId] = agents;
-      }),
-      false,
-      n(`updateGroupAgentMaps/${groupId}`),
-    );
-  },
-
-  internal_updateSupervisorTodos: (groupId, topicId, todos) => {
-    set(
-      produce((state: ChatStoreState) => {
-        const key = messageMapKey(groupId, topicId);
-        state.supervisorTodos[key] = todos;
-      }),
-      false,
-      n(`updateSupervisorTodos/${groupId}`),
-    );
-  },
-
   internal_updateActiveSessionType: (sessionType?: 'agent' | 'group') => {
     if (get().activeSessionType === sessionType) return;
 

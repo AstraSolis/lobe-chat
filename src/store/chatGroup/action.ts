@@ -4,7 +4,11 @@ import { mutate } from 'swr';
 import { StateCreator } from 'zustand/vanilla';
 
 import { INBOX_SESSION_ID } from '@/const/session';
-import { ChatGroupItem } from '@/database/schemas/chatGroup';
+import type { ChatGroupAgentItem, ChatGroupItem } from '@/database/schemas/chatGroup';
+import type { ChatStoreState } from '@/store/chat/initialState';
+import type { SupervisorTodoItem } from '@/store/chat/slices/message/supervisor';
+import { getChatStoreState, useChatStore } from '@/store/chat';
+import { messageMapKey } from '@/store/chat/utils/messageMapKey';
 import { useClientDataSWR } from '@/libs/swr';
 import { chatGroupService } from '@/services/chatGroup';
 import { getSessionStoreState } from '@/store/session';
@@ -98,6 +102,58 @@ export const chatGroupAction: StateCreator<
     },
 
     internal_dispatchChatGroup: dispatch,
+
+    internal_updateGroupMaps: (groups) => {
+      const nextGroupMap = groups.reduce(
+        (map, group) => {
+          map[group.id] = group;
+          return map;
+        },
+        {} as Record<string, ChatGroupItem>,
+      );
+
+      set(
+        produce((state: ChatGroupState) => {
+          if (!isEqual(state.groupMap, nextGroupMap)) {
+            state.groupMap = nextGroupMap;
+          }
+          state.groupsInit = true;
+          state.isGroupsLoading = false;
+        }),
+        false,
+        n('internal_updateGroupMaps/chatGroup'),
+      );
+
+      const chatState = getChatStoreState();
+      if (!isEqual(chatState.groupMaps, nextGroupMap)) {
+        useChatStore.setState(
+          { groupMaps: nextGroupMap, groupsInit: true },
+          false,
+          n('internal_updateGroupMaps/chat'),
+        );
+      }
+    },
+
+    internal_updateGroupAgentMaps: (groupId, agents) => {
+      useChatStore.setState(
+        produce((state: ChatStoreState) => {
+          state.groupAgentMaps[groupId] = agents;
+        }),
+        false,
+        n(`internal_updateGroupAgentMaps/${groupId}`),
+      );
+    },
+
+    internal_updateSupervisorTodos: (groupId, topicId, todos) => {
+      const key = messageMapKey(groupId, topicId);
+      useChatStore.setState(
+        produce((state: ChatStoreState) => {
+          state.supervisorTodos[key] = todos;
+        }),
+        false,
+        n(`internal_updateSupervisorTodos/${groupId}`),
+      );
+    },
 
     internal_refreshGroups: async () => {
       await get().loadGroups();

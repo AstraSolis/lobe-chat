@@ -321,11 +321,12 @@ export const chatAiGroupChat: StateCreator<
     const {
       messagesMap,
       internal_toggleSupervisorLoading,
-      internal_updateSupervisorTodos,
       internal_createMessage,
       supervisorTodos,
       activeTopicId,
     } = get();
+
+    const { internal_updateSupervisorTodos } = useChatGroupStore.getState();
 
     const createSupervisorTodoMessage = async (todoList: SupervisorTodoItem[]) => {
       if (!groupId) return;

@@ -11,7 +11,7 @@ import { DEFAULT_AGENT_LOBE_SESSION, INBOX_SESSION_ID } from '@/const/session';
 import { useClientDataSWR } from '@/libs/swr';
 import { chatGroupService } from '@/services/chatGroup';
 import { sessionService } from '@/services/session';
-import { useChatStore } from '@/store/chat';
+import { getChatGroupStoreState } from '@/store/chatGroup';
 import { SessionStore } from '@/store/session';
 import { getUserStoreState, useUserStore } from '@/store/user';
 import { settingsSelectors, userProfileSelectors } from '@/store/user/selectors';
@@ -261,7 +261,7 @@ export const createSessionSlice: StateCreator<
           if (groupSessions.length > 0) {
             // For group sessions, we need to transform them to ChatGroupItem format
             // The session ID is the chat group ID, and we can extract basic group info
-            const chatStore = useChatStore.getState();
+            const chatGroupStore = getChatGroupStoreState();
             const chatGroups = groupSessions.map((session) => ({
               accessedAt: session.updatedAt,
               clientId: null,
@@ -289,7 +289,7 @@ export const createSessionSlice: StateCreator<
               userId: '', // Use updatedAt as accessedAt fallback
             }));
 
-            chatStore.internal_updateGroupMaps(chatGroups);
+            chatGroupStore.internal_updateGroupMaps(chatGroups);
           }
 
           set({ isSessionsFirstFetchFinished: true }, false, n('useFetchSessions/onSuccess', data));

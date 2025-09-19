@@ -1,6 +1,6 @@
-import { ChatGroupItem } from '@/database/schemas';
-import type { NewChatGroup } from '@/database/schemas/chatGroup';
+import type { ChatGroupAgentItem, ChatGroupItem, NewChatGroup } from '@/database/schemas/chatGroup';
 import type { LobeChatGroupConfig } from '@/types/chatGroup';
+import type { SupervisorTodoItem } from '@/store/chat/slices/message/supervisor';
 
 export interface ChatGroupState {
   activeThreadAgentId: string;
@@ -25,6 +25,13 @@ export interface ChatGroupAction {
           payload: any;
           type: string;
         },
+  ) => void;
+  internal_updateGroupAgentMaps: (groupId: string, agents: ChatGroupAgentItem[]) => void;
+  internal_updateGroupMaps: (groups: ChatGroupItem[]) => void;
+  internal_updateSupervisorTodos: (
+    groupId: string,
+    topicId: string | null | undefined,
+    todos: SupervisorTodoItem[],
   ) => void;
   internal_refreshGroups: () => Promise<void>;
   loadGroups: () => Promise<void>;
