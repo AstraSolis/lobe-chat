@@ -165,7 +165,6 @@ export interface ChatMessageAction {
     topicId: string | null | undefined,
     todos: SupervisorTodoItem[],
   ) => void;
-
   /**
    * Update active session ID with cleanup of pending operations
    */

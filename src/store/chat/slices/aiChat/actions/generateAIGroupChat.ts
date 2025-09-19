@@ -28,6 +28,7 @@ import {
   GroupChatSupervisor,
   SupervisorContext,
   SupervisorDecisionList,
+  SupervisorTodoItem,
 } from '../../message/supervisor';
 
 const n = setNamespace('aiGroupChat');
@@ -54,6 +55,20 @@ const getDebounceThreshold = (responseSpeed?: 'slow' | 'medium' | 'fast'): numbe
       return 5000;
     }
   }
+};
+
+const formatSupervisorTodoContent = (todos: SupervisorTodoItem[]): string => {
+  if (!todos || todos.length === 0) {
+    return ['### Todo List', '', '- [x] All tasks are complete.'].join('\n');
+  }
+
+  const lines = todos.map((item) => {
+    const checkbox = item.finished ? 'x' : ' ';
+    const content = item.finished ? `~~${item.content}~~` : item.content;
+    return `- [${checkbox}] ${content}`;
+  });
+
+  return ['### Todo List', '', ...lines].join('\n');
 };
 
 /**
@@ -259,28 +274,28 @@ export const chatAiGroupChat: StateCreator<
 
       if (messageId) {
         const groupConfig = chatGroupSelectors.currentGroupConfig(useChatGroupStore.getState());
-        
+
         // If supervisor is disabled, check for direct mentions and trigger them directly
         if (!groupConfig?.enableSupervisor) {
           const mentionedAgentIds = extractMentionsFromContent(message);
           const agents = sessionSelectors.currentGroupAgents(useSessionStore.getState());
-          
+
           if (mentionedAgentIds.length > 0) {
             // Validate that mentioned agents exist in the group
-            const validMentionedAgents = mentionedAgentIds.filter(agentId =>
-              agents?.some(agent => agent.id === agentId)
+            const validMentionedAgents = mentionedAgentIds.filter((agentId) =>
+              agents?.some((agent) => agent.id === agentId),
             );
-            
+
             if (validMentionedAgents.length > 0) {
               console.log('Supervisor disabled, triggering direct mentions:', validMentionedAgents);
-              
+
               // Process mentioned agents directly without supervisor decision
               const { internal_executeAgentResponses } = get();
-              const decisions = validMentionedAgents.map(agentId => ({
+              const decisions = validMentionedAgents.map((agentId) => ({
                 id: agentId,
                 target: targetMemberId || undefined, // Pass through the target if it's a DM
               }));
-              
+
               await internal_executeAgentResponses(groupId, decisions);
             } else {
               console.log('Supervisor disabled, mentioned agents not found in group');
@@ -307,9 +322,53 @@ export const chatAiGroupChat: StateCreator<
       messagesMap,
       internal_toggleSupervisorLoading,
       internal_updateSupervisorTodos,
+      internal_createMessage,
+      internal_updateMessageContent,
       supervisorTodos,
       activeTopicId,
     } = get();
+
+    const createSupervisorTodoMessage = async (todoList: SupervisorTodoItem[]) => {
+      if (!groupId) return;
+
+      const sessionId = useSessionStore.getState().activeId || groupId;
+      if (!sessionId) return;
+
+      const content = formatSupervisorTodoContent(todoList);
+      const state = get();
+      const key = messageMapKey(groupId, activeTopicId);
+      const history = state.messagesMap[key] || [];
+      const existingSupervisorMessage = [...history]
+        .reverse()
+        .find((message) => message.agentId === 'supervisor' && message.role === 'system');
+
+      // if (existingSupervisorMessage) {
+      //   if (existingSupervisorMessage.content === content) {
+      //     return;
+      //   }
+
+      //   try {
+      //     await internal_updateMessageContent(existingSupervisorMessage.id, content);
+      //   } catch (error) {
+      //     console.error('Failed to update supervisor todo message:', error);
+      //   }
+
+      //   return;
+      // }
+
+      const supervisorMessage: CreateMessageParams = {
+        agentId: 'supervisor',
+        content,
+        groupId,
+        role: 'supervisor',
+        sessionId,
+        topicId: activeTopicId ?? undefined,
+      };
+
+      console.log('Creating supervisor todo message:', supervisorMessage);
+
+      await internal_createMessage(supervisorMessage);
+    };
 
     const messages = messagesMap[messageMapKey(groupId, activeTopicId)] || [];
     const agents = sessionSelectors.currentGroupAgents(useSessionStore.getState());
@@ -367,9 +426,13 @@ export const chatAiGroupChat: StateCreator<
         todoList: supervisorTodos?.[todoKey] || [],
       };
 
-      const { decisions, todos } = await supervisor.makeDecision(context);
+      const { decisions, todos, todoUpdated } = await supervisor.makeDecision(context);
 
       internal_updateSupervisorTodos(groupId, activeTopicId, todos);
+
+      if (todoUpdated) {
+        await createSupervisorTodoMessage(todos);
+      }
 
       console.log('Supervisor decisions:', decisions);
 
@@ -809,7 +872,7 @@ export const chatAiGroupChat: StateCreator<
         role: 'system',
         agentId: 'supervisor',
         groupId,
-        sessionId: useSessionStore.getState().activeId,
+        sessionId: useSessionStore.getState().activeId || groupId,
         topicId: activeTopicId,
         error: {
           type: ChatErrorType.SupervisorDecisionFailed,

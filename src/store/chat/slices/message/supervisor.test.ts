@@ -52,16 +52,18 @@ describe('GroupChatSupervisor', () => {
   it('should request structured completion and return filtered decisions', async () => {
     const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
 
-    vi.mocked(chatService.getStructuredCompletion).mockResolvedValue({
-      decisions: [
-        { id: 'agent-1', instruction: 'Say hello', target: 'user' },
-        { id: 'unknown-agent', instruction: 'Ignore me' },
-      ],
-      todos: [
-        { content: 'Review action items', finished: false },
-        { content: 'Prepare summary', finished: true },
-      ],
-    });
+    vi.mocked(chatService.getStructuredCompletion).mockResolvedValue([
+      { tool_name: 'create_todo', parameter: { content: 'Review action items' } },
+      { tool_name: 'create_todo', parameter: { content: 'Prepare summary' } },
+      {
+        tool_name: 'trigger_agent',
+        parameter: { id: 'agent-1', instruction: 'Say hello', target: 'user' },
+      },
+      {
+        tool_name: 'trigger_agent',
+        parameter: { id: 'unknown-agent', instruction: 'Ignore me' },
+      },
+    ]);
 
     const result = await supervisor.makeDecision({ ...baseContext });
 
@@ -71,6 +73,11 @@ describe('GroupChatSupervisor', () => {
       messages: [{ content: 'structured-supervisor-prompt', role: 'user' }],
       response_format: {
         type: 'json_schema',
+        json_schema: {
+          schema: {
+            type: 'array',
+          },
+        },
       },
       stream: false,
     });
@@ -85,12 +92,14 @@ describe('GroupChatSupervisor', () => {
 
     expect(result.todos).toEqual([
       { content: 'Review action items', finished: false },
-      { content: 'Prepare summary', finished: true },
+      { content: 'Prepare summary', finished: false },
     ]);
+
+    expect(result.todoUpdated).toBe(true);
 
     expect(logSpy).toHaveBeenCalledWith('Supervisor TODO list:', [
       { content: 'Review action items', finished: false },
-      { content: 'Prepare summary', finished: true },
+      { content: 'Prepare summary', finished: false },
     ]);
     logSpy.mockRestore();
   });
@@ -101,21 +110,16 @@ describe('GroupChatSupervisor', () => {
     vi.mocked(chatService.fetchPresetTaskResult).mockImplementation(async ({ onFinish }) => {
       const payload = [
         '```json',
-        '{',
-        '  "decisions": [',
-        '    {',
-        '      "id": "agent-2",',
-        '      "instruction": "Fallback",',
-        '      "target": "user"',
-        '    }',
-        '  ],',
-        '  "todos": [',
-        '    {',
-        '      "content": "Follow up with the user",',
-        '      "finished": false',
-        '    }',
-        '  ]',
-        '}',
+        '[',
+        '  {',
+        '    "tool_name": "create_todo",',
+        '    "parameter": { "content": "Follow up with the user" }',
+        '  },',
+        '  {',
+        '    "tool_name": "trigger_agent",',
+        '    "parameter": { "id": "agent-2", "instruction": "Fallback", "target": "user" }',
+        '  }',
+        ']',
         '```',
         '',
       ].join('\n');
@@ -137,6 +141,8 @@ describe('GroupChatSupervisor', () => {
     expect(result.todos).toEqual([
       { content: 'Follow up with the user', finished: false },
     ]);
+
+    expect(result.todoUpdated).toBe(true);
 
     expect(logSpy).toHaveBeenCalledWith('Supervisor TODO list:', [
       { content: 'Follow up with the user', finished: false },

@@ -15,10 +15,20 @@ export interface SupervisorMessageProps {
 const SupervisorMessage = memo<SupervisorMessageProps>(({ message }) => {
   const { t } = useTranslation('chat');
 
+  const isTodoMessage =
+    message.agentId === 'supervisor' && !message.error && message.content?.startsWith('### Todo List');
+
   const errorMessage =
     message.error?.type === ChatErrorType.SupervisorDecisionFailed
       ? t('supervisor.decisionFailed', { ns: 'error' })
       : message.error?.message;
+
+  const errorProps = errorMessage
+    ? {
+        message: errorMessage,
+        type: 'error' as const,
+      }
+    : undefined;
 
   return (
     <ChatItem
@@ -26,17 +36,14 @@ const SupervisorMessage = memo<SupervisorMessageProps>(({ message }) => {
         avatar: DEFAULT_SUPERVISOR_AVATAR,
         title: t('groupSidebar.members.orchestrator'),
       }}
-      error={{
-        message: errorMessage,
-        type: 'error',
-      }}
+      error={isTodoMessage ? undefined : errorProps}
       loading={false}
       message={message.content}
       placement="left"
       primary={false}
       showTitle={true}
       time={message.updatedAt || message.createdAt}
-      variant="bubble"
+      variant={isTodoMessage ? 'docs' : 'bubble'}
     />
   );
 });

@@ -21,6 +21,7 @@ export interface SupervisorTodoItem {
 export interface SupervisorDecisionResult {
   decisions: SupervisorDecisionList;
   todos: SupervisorTodoItem[];
+  todoUpdated: boolean;
 }
 
 export type SupervisorToolName = 'create_todo' | 'finish_todo' | 'trigger_agent';
@@ -55,7 +56,7 @@ export class GroupChatSupervisor {
 
     // If no agents available, stop conversation
     if (availableAgents.length === 0) {
-      return { decisions: [], todos: [] };
+      return { decisions: [], todos: [], todoUpdated: false };
     }
 
     try {
@@ -242,14 +243,14 @@ export class GroupChatSupervisor {
     try {
       const todos = this.extractLegacyTodoList(response, previousTodos);
       const decisions = this.parseLegacyDecisions(response, availableAgents);
-      return { decisions, todos };
+      return { decisions, todos, todoUpdated: false };
     } catch (legacyError) {
       const primaryMessage =
-        primaryError === '__LEGACY_FORMAT__'
+        primaryError instanceof Error && primaryError.message === '__LEGACY_FORMAT__'
           ? 'legacy format detected'
           : primaryError instanceof Error
-            ? primaryError.message
-            : String(primaryError);
+          ? primaryError.message
+          : String(primaryError);
       const legacyMessage =
         legacyError instanceof Error ? legacyError.message : String(legacyError);
 
@@ -312,11 +313,16 @@ export class GroupChatSupervisor {
         : null;
 
     const potentialName =
+      typeof raw.tool_code === 'string'
+        ? raw.tool_code
+        : typeof raw.toolCode === 'string'
+        ? raw.toolCode
+        :
       typeof raw.tool_name === 'string'
         ? raw.tool_name
         : typeof raw.toolName === 'string'
-          ? raw.toolName
-          : typeof raw.name === 'string'
+        ? raw.toolName
+        : typeof raw.name === 'string'
             ? raw.name
             : functionCallName;
 
@@ -358,20 +364,23 @@ export class GroupChatSupervisor {
     context: SupervisorContext,
   ): SupervisorDecisionResult {
     if (toolCalls.length === 0) {
-      return { decisions: [], todos: previousTodos };
+      return { decisions: [], todos: previousTodos, todoUpdated: false };
     }
 
     const todos = previousTodos.map((todo) => ({ ...todo }));
     const decisions: SupervisorDecisionList = [];
+    let todoUpdated = false;
 
     toolCalls.forEach((call) => {
       switch (call.tool_name) {
         case 'create_todo': {
-          this.applyCreateTodo(todos, call.parameter);
+          const changed = this.applyCreateTodo(todos, call.parameter);
+          todoUpdated = todoUpdated || changed;
           break;
         }
         case 'finish_todo': {
-          this.applyFinishTodo(todos, call.parameter);
+          const changed = this.applyFinishTodo(todos, call.parameter);
+          todoUpdated = todoUpdated || changed;
           break;
         }
         case 'trigger_agent': {
@@ -384,25 +393,28 @@ export class GroupChatSupervisor {
       }
     });
 
-    return { decisions, todos };
+    return { decisions, todos, todoUpdated };
   }
 
-  private applyCreateTodo(targetTodos: SupervisorTodoItem[], parameter: unknown) {
+  private applyCreateTodo(targetTodos: SupervisorTodoItem[], parameter: unknown): boolean {
     if (Array.isArray(parameter)) {
-      parameter.forEach((item) => this.applyCreateTodo(targetTodos, item));
-      return;
+      return parameter.reduce(
+        (acc, item) => this.applyCreateTodo(targetTodos, item) || acc,
+        false,
+      );
     }
 
     const content = this.extractTodoContent(parameter);
-    if (!content) return;
+    if (!content) return false;
 
     const exists = targetTodos.some(
       (todo) => todo.content.trim().toLowerCase() === content.toLowerCase() && !todo.finished,
     );
 
-    if (!exists) {
-      targetTodos.push({ content, finished: false });
-    }
+    if (exists) return false;
+
+    targetTodos.push({ content, finished: false });
+    return true;
   }
 
   private extractTodoContent(parameter: unknown): string | null {
@@ -431,107 +443,122 @@ export class GroupChatSupervisor {
     return null;
   }
 
-  private applyFinishTodo(targetTodos: SupervisorTodoItem[], parameter: unknown) {
+  private applyFinishTodo(targetTodos: SupervisorTodoItem[], parameter: unknown): boolean {
     if (Array.isArray(parameter)) {
-      parameter.forEach((item) => this.applyFinishTodo(targetTodos, item));
-      return;
+      return parameter.reduce(
+        (acc, item) => this.applyFinishTodo(targetTodos, item) || acc,
+        false,
+      );
     }
 
-    if (parameter === false) return;
+    if (parameter === false) return false;
 
     if (parameter === true || parameter === undefined || parameter === null) {
-      this.finishNextUnfinished(targetTodos);
-      return;
+      return this.finishNextUnfinished(targetTodos);
     }
 
     if (typeof parameter === 'number') {
-      this.finishTodoByIndex(targetTodos, parameter);
-      return;
+      return this.finishTodoByIndex(targetTodos, parameter);
     }
 
     if (typeof parameter === 'string') {
-      this.finishTodoByContent(targetTodos, parameter);
-      return;
+      return this.finishTodoByContent(targetTodos, parameter);
     }
 
     if (typeof parameter === 'object') {
       const payload = parameter as Record<string, unknown>;
 
       if ('all' in payload && payload.all === true) {
-        targetTodos.forEach((todo) => (todo.finished = true));
-        return;
+        let updated = false;
+        targetTodos.forEach((todo) => {
+          if (!todo.finished) {
+            todo.finished = true;
+            updated = true;
+          }
+        });
+        return updated;
       }
 
       let handled = false;
+      let updated = false;
 
       if ('index' in payload && typeof payload.index === 'number') {
-        this.finishTodoByIndex(targetTodos, payload.index);
+        updated = this.finishTodoByIndex(targetTodos, payload.index) || updated;
         handled = true;
       }
 
       if ('indices' in payload && Array.isArray(payload.indices)) {
         payload.indices.forEach((idx) => {
-          if (typeof idx === 'number') this.finishTodoByIndex(targetTodos, idx);
+          if (typeof idx === 'number') {
+            updated = this.finishTodoByIndex(targetTodos, idx) || updated;
+          }
         });
         handled = true;
       }
 
       if ('content' in payload && typeof payload.content === 'string') {
-        this.finishTodoByContent(targetTodos, payload.content);
+        updated = this.finishTodoByContent(targetTodos, payload.content) || updated;
         handled = true;
       }
 
       if ('contents' in payload && Array.isArray(payload.contents)) {
         payload.contents.forEach((item) => {
-          if (typeof item === 'string') this.finishTodoByContent(targetTodos, item);
+          if (typeof item === 'string') {
+            updated = this.finishTodoByContent(targetTodos, item) || updated;
+          }
         });
         handled = true;
       }
 
       if ('next' in payload && payload.next === true) {
-        this.finishNextUnfinished(targetTodos);
+        updated = this.finishNextUnfinished(targetTodos) || updated;
         handled = true;
       }
 
       if (!handled) {
-        this.finishNextUnfinished(targetTodos);
+        updated = this.finishNextUnfinished(targetTodos) || updated;
       }
 
-      return;
+      return updated;
     }
 
-    this.finishNextUnfinished(targetTodos);
+    return this.finishNextUnfinished(targetTodos);
   }
 
-  private finishNextUnfinished(targetTodos: SupervisorTodoItem[]) {
+  private finishNextUnfinished(targetTodos: SupervisorTodoItem[]): boolean {
     const todo = targetTodos.find((item) => !item.finished);
-    if (todo) todo.finished = true;
+    if (!todo) return false;
+    todo.finished = true;
+    return true;
   }
 
-  private finishTodoByIndex(targetTodos: SupervisorTodoItem[], index: number) {
-    if (!Number.isInteger(index)) return;
-    if (index < 0 || index >= targetTodos.length) return;
+  private finishTodoByIndex(targetTodos: SupervisorTodoItem[], index: number): boolean {
+    if (!Number.isInteger(index)) return false;
+    if (index < 0 || index >= targetTodos.length) return false;
+    if (targetTodos[index].finished) return false;
     targetTodos[index].finished = true;
+    return true;
   }
 
-  private finishTodoByContent(targetTodos: SupervisorTodoItem[], content: string) {
+  private finishTodoByContent(targetTodos: SupervisorTodoItem[], content: string): boolean {
     const normalizedContent = content.trim().toLowerCase();
-    if (!normalizedContent) return;
+    if (!normalizedContent) return false;
 
     const exactMatch = targetTodos.find(
       (todo) => todo.content.trim().toLowerCase() === normalizedContent,
     );
     if (exactMatch) {
+      if (exactMatch.finished) return false;
       exactMatch.finished = true;
-      return;
+      return true;
     }
 
     const partialMatch = targetTodos.find((todo) =>
       todo.content.toLowerCase().includes(normalizedContent),
     );
-    if (partialMatch) {
-      partialMatch.finished = true;
-    }
+    if (!partialMatch || partialMatch.finished) return false;
+    partialMatch.finished = true;
+    return true;
   }
 
   private buildDecisionFromTool(
@@ -557,35 +584,33 @@ export class GroupChatSupervisor {
     availableAgents: GroupMemberWithAgent[],
     context: SupervisorContext,
   ): SupervisorDecision | null {
-    const idCandidate = payload.id || payload.agentId || payload.speaker;
-    if (typeof idCandidate !== 'string') return null;
+    const idValue =
+      typeof payload.id === 'string'
+        ? payload.id
+        : typeof payload.agentId === 'string'
+        ? payload.agentId
+        : typeof payload.speaker === 'string'
+        ? payload.speaker
+        : undefined;
+    if (!idValue) return null;
 
-    const agentExists = availableAgents.some((agent) => agent.id === idCandidate);
+    const agentExists = availableAgents.some((agent) => agent.id === idValue);
     if (!agentExists) return null;
 
     const instruction =
       typeof payload.instruction === 'string'
         ? payload.instruction
         : typeof payload.message === 'string'
-          ? payload.message
-          : undefined;
+        ? payload.message
+        : undefined;
 
+    const potentialTargets = [payload.target, payload.recipient, payload.to];
     let target: string | undefined;
-    switch ('string') {
-    case typeof payload.target: {
-    target = payload.target;
-    break;
-    }
-    case typeof payload.recipient: {
-    target = payload.recipient;
-    break;
-    }
-    case typeof payload.to: { {
-    target = payload.to;
-    // No default
-    }
-    break;
-    }
+    for (const candidate of potentialTargets) {
+      if (typeof candidate === 'string') {
+        target = candidate;
+        break;
+      }
     }
 
     if (target && target !== 'user') {
@@ -598,8 +623,8 @@ export class GroupChatSupervisor {
     }
 
     return {
-      id: idCandidate,
-      instruction: instruction || undefined,
+      id: idValue,
+      instruction,
       target: target || undefined,
     };
   }

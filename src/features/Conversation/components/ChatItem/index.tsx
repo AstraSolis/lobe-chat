@@ -274,6 +274,7 @@ const Item = memo<ChatListItemProps>(
 
     if (isDM && item?.role === 'user') return null;
 
+    // TODO: agentId is constrained so we need use other way to identify the supervisor message
     if (item?.agentId === 'supervisor') {
       return (
         <InPortalThreadContext.Provider value={inPortalThread}>
