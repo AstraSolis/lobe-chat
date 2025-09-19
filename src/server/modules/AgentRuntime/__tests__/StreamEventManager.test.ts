@@ -56,10 +56,7 @@ describe('StreamEventManager', () => {
         'sessionId',
         sessionId,
         'data',
-        JSON.stringify({
-          metadata,
-          sessionId,
-        }),
+        JSON.stringify(metadata),
         'timestamp',
         expect.any(String),
       );

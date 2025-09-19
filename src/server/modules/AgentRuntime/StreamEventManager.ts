@@ -109,12 +109,9 @@ export class StreamEventManager {
   /**
    * 发布 Agent 运行时初始化事件
    */
-  async publishAgentRuntimeInit(sessionId: string, metadata: any): Promise<string> {
+  async publishAgentRuntimeInit(sessionId: string, initialState: any): Promise<string> {
     return this.publishStreamEvent(sessionId, {
-      data: {
-        metadata,
-        sessionId,
-      },
+      data: initialState,
       stepIndex: 0,
       type: 'agent_runtime_init',
     });
