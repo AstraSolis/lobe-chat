@@ -366,6 +366,7 @@ class ChatService {
     });
   };
 
+  // TODO Currently not working, still using streaming completion
   getStructuredCompletion = async <T = unknown>(
     params: Partial<ChatStreamPayload>,
     options?: FetchOptions,

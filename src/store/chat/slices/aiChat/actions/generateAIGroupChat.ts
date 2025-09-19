@@ -403,8 +403,6 @@ export const chatAiGroupChat: StateCreator<
       n(`setSupervisorAbortController/${groupId}`),
     );
 
-    internal_toggleSupervisorLoading(true, groupId);
-
     // Get real user name from user store
     const userStoreState = getUserStoreState();
     const realUserName = userProfileSelectors.nickName(userStoreState) || 'User';
@@ -424,6 +422,8 @@ export const chatAiGroupChat: StateCreator<
         abortController,
         todoList: supervisorTodos?.[todoKey] || [],
       };
+
+      internal_toggleSupervisorLoading(true, groupId);
 
       const { decisions, todos, todoUpdated } = await supervisor.makeDecision(context);
 

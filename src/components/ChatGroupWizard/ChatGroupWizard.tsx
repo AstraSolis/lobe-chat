@@ -232,7 +232,7 @@ const ChatGroupWizard = memo<ChatGroupWizardProps>(
     const [removedMembers, setRemovedMembers] = useState<Record<string, string[]>>({});
     const [isHostRemoved, setIsHostRemoved] = useState(false);
     const [hostModelConfig, setHostModelConfig] = useState<{ model?: string; provider?: string }>(
-      defaultModel,
+      defaultModel.model && defaultModel.provider ? defaultModel : {},
     );
     const [isCreatingCustom, setIsCreatingCustom] = useState(false);
     const [activePanel, setActivePanel] = useState<'templates' | 'agents'>('templates');
@@ -274,7 +274,7 @@ const ChatGroupWizard = memo<ChatGroupWizardProps>(
       setSearchTerm('');
       setRemovedMembers({});
       setIsHostRemoved(false);
-      setHostModelConfig(defaultModel);
+      setHostModelConfig(defaultModel.model && defaultModel.provider ? defaultModel : {});
     };
 
     const handleHostModelChange = useCallback((config: { model?: string; provider?: string }) => {
@@ -397,23 +397,36 @@ const ChatGroupWizard = memo<ChatGroupWizardProps>(
         .filter((item): item is NonNullable<typeof item> => Boolean(item));
     }, [selectedAgents, agentSessions, t, handleRemoveAgent, memberDescriptionClass]);
 
+    const normalizedHostModelConfig = useMemo(() => {
+      const model = hostModelConfig.model ?? defaultModel.model;
+      const provider = hostModelConfig.provider ?? defaultModel.provider;
+
+      if (!model || !provider) return undefined;
+
+      return { model, provider };
+    }, [hostModelConfig, defaultModel]);
+
     const handleTemplateConfirm = useCallback(async () => {
       if (!selectedTemplate) return;
 
+      const hostConfig = isHostRemoved ? undefined : normalizedHostModelConfig;
+
       try {
-        await onCreateFromTemplate(selectedTemplate, hostModelConfig, !isHostRemoved);
+        await onCreateFromTemplate(selectedTemplate, hostConfig, !isHostRemoved);
         handleReset();
       } catch (error) {
         console.error('Failed to create group from template:', error);
       }
-    }, [selectedTemplate, onCreateFromTemplate, hostModelConfig, isHostRemoved]);
+    }, [selectedTemplate, onCreateFromTemplate, normalizedHostModelConfig, isHostRemoved]);
 
     const handleCustomConfirm = useCallback(async () => {
       if (selectedAgents.length === 0) return;
 
+      const hostConfig = isHostRemoved ? undefined : normalizedHostModelConfig;
+
       try {
         setIsCreatingCustom(true);
-        await onCreateCustom(selectedAgents, hostModelConfig, !isHostRemoved);
+        await onCreateCustom(selectedAgents, hostConfig, !isHostRemoved);
         handleReset();
         onCancel();
       } catch (error) {
@@ -421,7 +434,7 @@ const ChatGroupWizard = memo<ChatGroupWizardProps>(
       } finally {
         setIsCreatingCustom(false);
       }
-    }, [selectedAgents, onCreateCustom, hostModelConfig, isHostRemoved, onCancel]);
+    }, [selectedAgents, onCreateCustom, normalizedHostModelConfig, isHostRemoved, onCancel]);
 
     const handleConfirm = useCallback(async () => {
       if (selectedTemplate) {
@@ -582,10 +595,7 @@ const ChatGroupWizard = memo<ChatGroupWizardProps>(
                     </Flexbox>
                     <ModelSelect
                       onChange={handleHostModelChange}
-                      value={{
-                        model: hostModelConfig.model || defaultModel.model!,
-                        provider: hostModelConfig.provider || defaultModel.provider!,
-                      }}
+                      value={normalizedHostModelConfig}
                     />
                     <ActionIcon
                       icon={X}

@@ -20,8 +20,8 @@ export interface SupervisorTodoItem {
 
 export interface SupervisorDecisionResult {
   decisions: SupervisorDecisionList;
-  todos: SupervisorTodoItem[];
   todoUpdated: boolean;
+  todos: SupervisorTodoItem[];
 }
 
 export type SupervisorToolName = 'create_todo' | 'finish_todo' | 'trigger_agent';
@@ -56,7 +56,7 @@ export class GroupChatSupervisor {
 
     // If no agents available, stop conversation
     if (availableAgents.length === 0) {
-      return { decisions: [], todos: [], todoUpdated: false };
+      return { decisions: [], todoUpdated: false, todos: [] };
     }
 
     try {
@@ -146,9 +146,9 @@ export class GroupChatSupervisor {
         throw this.createAbortError();
       }
 
-      if (this.shouldFallbackToStreaming(err)) {
-        return this.callLLMForDecisionWithStreaming(prompt, context, supervisorConfig);
-      }
+      // if (this.shouldFallbackToStreaming(err)) {
+      //   return this.callLLMForDecisionWithStreaming(prompt, context, supervisorConfig);
+      // }
 
       console.error('Supervisor LLM error:', err);
       throw err instanceof Error ? err : new Error(String(err));
@@ -243,7 +243,7 @@ export class GroupChatSupervisor {
     try {
       const todos = this.extractLegacyTodoList(response, previousTodos);
       const decisions = this.parseLegacyDecisions(response, availableAgents);
-      return { decisions, todos, todoUpdated: false };
+      return { decisions, todoUpdated: false, todos };
     } catch (legacyError) {
       const primaryMessage =
         primaryError instanceof Error && primaryError.message === '__LEGACY_FORMAT__'
@@ -364,7 +364,7 @@ export class GroupChatSupervisor {
     context: SupervisorContext,
   ): SupervisorDecisionResult {
     if (toolCalls.length === 0) {
-      return { decisions: [], todos: previousTodos, todoUpdated: false };
+      return { decisions: [], todoUpdated: false, todos: previousTodos };
     }
 
     const todos = previousTodos.map((todo) => ({ ...todo }));
@@ -393,7 +393,7 @@ export class GroupChatSupervisor {
       }
     });
 
-    return { decisions, todos, todoUpdated };
+    return { decisions, todoUpdated, todos };
   }
 
   private applyCreateTodo(targetTodos: SupervisorTodoItem[], parameter: unknown): boolean {
