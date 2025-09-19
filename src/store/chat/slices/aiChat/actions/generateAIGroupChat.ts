@@ -335,9 +335,6 @@ export const chatAiGroupChat: StateCreator<
       if (!sessionId) return;
 
       const content = formatSupervisorTodoContent(todoList);
-      const state = get();
-      const key = messageMapKey(groupId, activeTopicId);
-      const history = state.messagesMap[key] || [];
       const supervisorMessage: CreateMessageParams = {
         content,
         groupId,

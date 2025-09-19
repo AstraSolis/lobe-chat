@@ -101,32 +101,6 @@ export class GroupChatSupervisor {
       temperature: 0.3,
     };
 
-    const responseFormat = {
-      json_schema: {
-        name: 'supervisor_tool_call_response',
-        schema: {
-          items: {
-            additionalProperties: false,
-            properties: {
-              parameter: {
-                description: 'Input payload for the tool invocation',
-                type: ['object', 'string', 'number', 'boolean', 'array', 'null'],
-              },
-              tool_name: {
-                description: 'Name of the tool to invoke',
-                enum: ['create_todo', 'finish_todo', 'trigger_agent'],
-                type: 'string',
-              },
-            },
-            required: ['tool_name'],
-            type: 'object',
-          },
-          type: 'array',
-        },
-      },
-      type: 'json_schema',
-    } as const;
-
     try {
       // TODO: Replace with structured ouput @Arvin
       return this.callLLMForDecisionWithStreaming(prompt, context, supervisorConfig);
@@ -674,7 +648,7 @@ export class GroupChatSupervisor {
 
   private extractLegacyTodoList(
     response: SupervisorToolCall[] | string,
-    _previousTodos: SupervisorTodoItem[],
+    previousTodos: SupervisorTodoItem[],
   ): SupervisorTodoItem[] {
     const normalize = (items: unknown): SupervisorTodoItem[] | undefined => {
       if (items === undefined) return undefined;
@@ -701,7 +675,7 @@ export class GroupChatSupervisor {
         if (normalized !== undefined) return normalized;
       }
 
-      return [];
+      return previousTodos;
     }
 
     if (response && typeof response === 'object' && !Array.isArray(response)) {
@@ -709,15 +683,20 @@ export class GroupChatSupervisor {
       if (normalized !== undefined) return normalized;
     }
 
-    return [];
+    return previousTodos;
   }
 
   private tryParseJson(value: string): unknown {
     if (!value) return undefined;
 
+    let parsed: unknown;
     try {
-      return JSON.parse(value);
-    } catch {}
+      parsed = JSON.parse(value);
+    } catch {
+      parsed = undefined;
+    }
+
+    if (parsed !== undefined) return parsed;
 
     const objectResult = this.extractJsonObjectFromString(value);
     if (objectResult !== null) return objectResult;
@@ -728,9 +707,16 @@ export class GroupChatSupervisor {
   private extractJsonObjectFromString(response: string) {
     const trimmed = response.trim();
 
+    let parsed: unknown;
     try {
-      return JSON.parse(trimmed);
-    } catch {}
+      parsed = JSON.parse(trimmed);
+    } catch {
+      parsed = undefined;
+    }
+
+    if (parsed && typeof parsed === 'object') {
+      return parsed;
+    }
 
     const startIndex = response.indexOf('{');
     const endIndex = response.lastIndexOf('}');
