@@ -9,6 +9,7 @@ import {
   Modal,
   SearchBar,
   Text,
+  Tooltip,
 } from '@lobehub/ui';
 import { Button, Checkbox, Empty } from 'antd';
 import { createStyles, useTheme } from 'antd-style';
@@ -385,9 +386,11 @@ const ChatGroupWizard = memo<ChatGroupWizardProps>(
               <Avatar avatar={avatar} background={avatarBackground} shape="circle" size={40} />
             ),
             description: description ? (
-              <Text className={memberDescriptionClass} ellipsis={{ rows: 1 }}>
-                {description}
-              </Text>
+              <Tooltip title={description}>
+                <Text className={memberDescriptionClass} ellipsis={{ rows: 1 }}>
+                  {description}
+                </Text>
+              </Tooltip>
             ) : null,
             key: agentId,
             showAction: true,
@@ -628,9 +631,11 @@ const ChatGroupWizard = memo<ChatGroupWizardProps>(
                             />
                           ),
                           description: member.systemRole ? (
-                            <Text className={memberDescriptionClass} ellipsis={{ rows: 1 }}>
-                              {member.systemRole}
-                            </Text>
+                            <Tooltip title={member.systemRole}>
+                              <Text className={memberDescriptionClass} ellipsis={{ rows: 1 }}>
+                                {member.systemRole}
+                              </Text>
+                            </Tooltip>
                           ) : null,
                           key: member.key,
                           showAction: true,
