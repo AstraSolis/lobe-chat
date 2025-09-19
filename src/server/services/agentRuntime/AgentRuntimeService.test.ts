@@ -218,7 +218,7 @@ describe('AgentRuntimeService', () => {
       expect(mockStreamManager.publishStreamEvent).toHaveBeenCalledWith('test-session-1', {
         type: 'step_start',
         stepIndex: 1,
-        data: { sessionId: 'test-session-1', stepIndex: 1 },
+        data: {},
       });
 
       expect(mockStreamManager.publishStreamEvent).toHaveBeenCalledWith('test-session-1', {

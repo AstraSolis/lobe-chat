@@ -41,10 +41,9 @@ export function createStreamingLLMExecutor(ctx: StreamingExecutorContext): Instr
     // 发布流式开始事件
     await streamManager.publishStreamEvent(sessionId, {
       data: {
-        messageId: llmPayload.assistantMessageId || 'unknown',
+        messageId: llmPayload.assistantMessageId,
         model: llmPayload.model,
         provider: llmPayload.provider,
-        sessionId,
       },
       stepIndex,
       type: 'stream_start',
@@ -81,12 +80,12 @@ export function createStreamingLLMExecutor(ctx: StreamingExecutorContext): Instr
             content += delta.content;
 
             // 立即发布流式内容到 Redis Stream
+            console.time('publishStreamChunk');
             await streamManager.publishStreamChunk(sessionId, stepIndex, {
               chunkType: 'text',
               content: delta.content,
-              fullContent: content,
-              messageId: llmPayload.assistantMessageId || 'unknown',
             });
+            console.timeEnd('publishStreamChunk');
 
             // 实时更新数据库中的消息内容
             // if (ctx.messageModel && llmPayload.assistantMessageId) {

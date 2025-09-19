@@ -122,7 +122,7 @@ export class AgentRuntimeService {
 
       // 发布步骤开始事件
       await this.streamManager.publishStreamEvent(sessionId, {
-        data: { sessionId, stepIndex },
+        data: {},
         stepIndex,
         type: 'step_start',
       });
