@@ -11,7 +11,15 @@ export interface StreamEvent {
   sessionId: string;
   stepIndex: number;
   timestamp: number;
-  type: 'stream_start' | 'stream_chunk' | 'stream_end' | 'step_start' | 'step_complete' | 'error';
+  type:
+    | 'agent_runtime_init'
+    | 'agent_runtime_end'
+    | 'stream_start'
+    | 'stream_chunk'
+    | 'stream_end'
+    | 'step_start'
+    | 'step_complete'
+    | 'error';
 }
 
 export interface StreamChunkData {
@@ -95,6 +103,43 @@ export class StreamEventManager {
       data: chunkData,
       stepIndex,
       type: 'stream_chunk',
+    });
+  }
+
+  /**
+   * 发布 Agent 运行时初始化事件
+   */
+  async publishAgentRuntimeInit(sessionId: string, metadata: any): Promise<string> {
+    return this.publishStreamEvent(sessionId, {
+      data: {
+        metadata,
+        sessionId,
+      },
+      stepIndex: 0,
+      type: 'agent_runtime_init',
+    });
+  }
+
+  /**
+   * 发布 Agent 运行时结束事件
+   */
+  async publishAgentRuntimeEnd(
+    sessionId: string,
+    stepIndex: number,
+    finalState: any,
+    reason?: string,
+    reasonDetail?: string,
+  ): Promise<string> {
+    return this.publishStreamEvent(sessionId, {
+      data: {
+        finalState,
+        phase: 'execution_complete',
+        reason: reason || 'completed',
+        reasonDetail: reasonDetail || 'Agent runtime completed successfully',
+        sessionId,
+      },
+      stepIndex,
+      type: 'agent_runtime_end',
     });
   }
 
