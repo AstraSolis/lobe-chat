@@ -369,7 +369,7 @@ export const agentSlice: StateCreator<ChatStore, [['zustand/devtools', never]], 
       // 创建 Agent 会话
       const agentStoreState = getAgentStoreState();
       const agentConfig = agentSelectors.currentAgentConfig(agentStoreState);
-      const agentChatConfig = agentChatConfigSelectors.currentChatConfig(agentStoreState);
+      // const agentChatConfig = agentChatConfigSelectors.currentChatConfig(agentStoreState);
       const { provider } = agentConfig;
 
       const sessionResponse = await agentClientService.createSession({
@@ -380,7 +380,6 @@ export const agentSlice: StateCreator<ChatStore, [['zustand/devtools', never]], 
           enableSearch: agentChatConfigSelectors.isAgentEnableSearch(agentStoreState),
           // humanApprovalRequired: agentChatConfig.humanApprovalRequired || false,
           maxSteps: 50,
-          ...agentChatConfig,
         },
 
         autoStart: true,
@@ -393,8 +392,8 @@ export const agentSlice: StateCreator<ChatStore, [['zustand/devtools', never]], 
         ],
         // 使用当前 sessionId 作为 userId
         modelRuntimeConfig: {
+          model: agentConfig.model,
           provider: provider!,
-          ...agentConfig,
         },
         userId: activeId,
       });
@@ -425,7 +424,7 @@ export const agentSlice: StateCreator<ChatStore, [['zustand/devtools', never]], 
       // 创建流式连接
       log(`Creating stream connection for session ${sessionResponse.sessionId}`);
       const eventSource = agentClientService.createStreamConnection(sessionResponse.sessionId, {
-        includeHistory: true,
+        includeHistory: false,
         onConnect: () => {
           log(`Stream connected for ${agentMessageId}`);
         },

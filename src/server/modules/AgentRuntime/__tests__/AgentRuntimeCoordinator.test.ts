@@ -154,7 +154,7 @@ describe('AgentRuntimeCoordinator', () => {
   });
 
   describe('saveStepResult', () => {
-    it('should save step result and publish end event when status is done', async () => {
+    it('should save step result but not publish end event (left to saveAgentState)', async () => {
       const sessionId = 'test-session-id';
       const stepResult = {
         executionTime: 1000,
@@ -165,11 +165,8 @@ describe('AgentRuntimeCoordinator', () => {
       await coordinator.saveStepResult(sessionId, stepResult as any);
 
       expect(mockStateManager.saveStepResult).toHaveBeenCalledWith(sessionId, stepResult);
-      expect(mockStreamManager.publishAgentRuntimeEnd).toHaveBeenCalledWith(
-        sessionId,
-        stepResult.stepIndex,
-        stepResult.newState,
-      );
+      // agent_runtime_end 事件现在由 saveAgentState 统一处理，确保它是最后一个事件
+      expect(mockStreamManager.publishAgentRuntimeEnd).not.toHaveBeenCalled();
     });
 
     it('should not publish end event when status is not done', async () => {

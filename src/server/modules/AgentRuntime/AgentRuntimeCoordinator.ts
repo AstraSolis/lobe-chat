@@ -78,15 +78,8 @@ export class AgentRuntimeCoordinator {
       // 保存步骤结果
       await this.stateManager.saveStepResult(sessionId, stepResult);
 
-      // 如果状态变为 done，发送 agent runtime end 事件
-      if (stepResult.newState.status === 'done') {
-        await this.streamEventManager.publishAgentRuntimeEnd(
-          sessionId,
-          stepResult.stepIndex,
-          stepResult.newState,
-        );
-        log('Agent runtime completed for session %s at step %d', sessionId, stepResult.stepIndex);
-      }
+      // 不在这里发送 agent_runtime_end 事件，让 saveAgentState 统一处理
+      // 这样确保 agent_runtime_end 是最后一个事件
     } catch (error) {
       console.error('Failed to save step result and handle events:', error);
       throw error;
