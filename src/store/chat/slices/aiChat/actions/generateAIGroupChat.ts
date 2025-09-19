@@ -357,7 +357,6 @@ export const chatAiGroupChat: StateCreator<
       // }
 
       const supervisorMessage: CreateMessageParams = {
-        agentId: 'supervisor',
         content,
         groupId,
         role: 'supervisor',
@@ -869,8 +868,7 @@ export const chatAiGroupChat: StateCreator<
       const errorMessage = error instanceof Error ? error.message : error;
 
       const supervisorMessage: CreateMessageParams = {
-        role: 'system',
-        agentId: 'supervisor',
+        role: 'supervisor',
         groupId,
         sessionId: useSessionStore.getState().activeId || groupId,
         topicId: activeTopicId,
