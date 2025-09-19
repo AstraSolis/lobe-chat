@@ -2,7 +2,7 @@ import { AgentRuntime } from '@lobechat/agent-runtime';
 import debug from 'debug';
 
 import {
-  AgentStateManager,
+  AgentRuntimeCoordinator,
   DurableLobeChatAgent,
   StreamEventManager,
   createStreamingFinishExecutor,
@@ -30,13 +30,13 @@ const log = debug('lobe-server:agent-runtime-service');
  * 封装 Agent 执行相关的逻辑，提供统一的服务接口
  */
 export class AgentRuntimeService {
-  private stateManager: AgentStateManager;
+  private coordinator: AgentRuntimeCoordinator;
   private streamManager: StreamEventManager;
   private queueService: QueueService;
   private baseURL: string;
 
   constructor() {
-    this.stateManager = new AgentStateManager();
+    this.coordinator = new AgentRuntimeCoordinator();
     this.streamManager = new StreamEventManager();
     this.queueService = new QueueService();
     this.baseURL = process.env.AGENT_RUNTIME_BASE_URL || 'http://localhost:3010/api/agent';
@@ -75,12 +75,15 @@ export class AgentRuntimeService {
         stepCount: 0,
       };
 
-      await this.stateManager.saveAgentState(sessionId, initialState as any);
-      await this.stateManager.createSessionMetadata(sessionId, {
+      // 使用协调器创建会话，自动发送初始化事件
+      await this.coordinator.createAgentSession(sessionId, {
         agentConfig,
         modelRuntimeConfig,
         userId,
       });
+
+      // 保存初始状态
+      await this.coordinator.saveAgentState(sessionId, initialState as any);
 
       let messageId: string | undefined;
       let autoStarted = false;
@@ -126,8 +129,8 @@ export class AgentRuntimeService {
 
       // 获取会话状态和元数据
       const [agentState, sessionMetadata] = await Promise.all([
-        this.stateManager.loadAgentState(sessionId),
-        this.stateManager.getSessionMetadata(sessionId),
+        this.coordinator.loadAgentState(sessionId),
+        this.coordinator.getSessionMetadata(sessionId),
       ]);
 
       if (!agentState) {
@@ -155,8 +158,8 @@ export class AgentRuntimeService {
       const startAt = Date.now();
       const stepResult = await runtime.step(currentState, currentContext);
 
-      // 保存状态
-      await this.stateManager.saveStepResult(sessionId, {
+      // 保存状态，协调器会自动处理事件发送
+      await this.coordinator.saveStepResult(sessionId, {
         ...stepResult,
         executionTime: Date.now() - startAt,
         stepIndex, // placeholder
@@ -239,8 +242,8 @@ export class AgentRuntimeService {
 
       // 获取当前状态和元数据
       const [currentState, sessionMetadata] = await Promise.all([
-        this.stateManager.loadAgentState(sessionId),
-        this.stateManager.getSessionMetadata(sessionId),
+        this.coordinator.loadAgentState(sessionId),
+        this.coordinator.getSessionMetadata(sessionId),
       ]);
 
       if (!currentState || !sessionMetadata) {
@@ -251,7 +254,7 @@ export class AgentRuntimeService {
       let executionHistory;
       if (includeHistory) {
         try {
-          executionHistory = await this.stateManager.getExecutionHistory(sessionId, historyLimit);
+          executionHistory = await this.coordinator.getExecutionHistory(sessionId, historyLimit);
         } catch (error) {
           log('Failed to load execution history: %O', error);
           executionHistory = [];
@@ -332,13 +335,13 @@ export class AgentRuntimeService {
       } else if (userId) {
         // 获取用户的所有活跃会话
         try {
-          const activeSessions = await this.stateManager.getActiveSessions();
+          const activeSessions = await this.coordinator.getActiveSessions();
 
           // 过滤出属于该用户的会话
           const userSessions = [];
           for (const session of activeSessions) {
             try {
-              const metadata = await this.stateManager.getSessionMetadata(session);
+              const metadata = await this.coordinator.getSessionMetadata(session);
               if (metadata?.userId === userId) {
                 userSessions.push(session);
               }
@@ -359,8 +362,8 @@ export class AgentRuntimeService {
       for (const session of sessions) {
         try {
           const [state, metadata] = await Promise.all([
-            this.stateManager.loadAgentState(session),
-            this.stateManager.getSessionMetadata(session),
+            this.coordinator.loadAgentState(session),
+            this.coordinator.getSessionMetadata(session),
           ]);
 
           if (state?.status === 'waiting_for_human_input') {
@@ -413,13 +416,13 @@ export class AgentRuntimeService {
       log('Starting execution for session %s', sessionId);
 
       // 检查会话是否存在
-      const sessionMetadata = await this.stateManager.getSessionMetadata(sessionId);
+      const sessionMetadata = await this.coordinator.getSessionMetadata(sessionId);
       if (!sessionMetadata) {
         throw new Error(`Session ${sessionId} not found`);
       }
 
       // 获取当前状态
-      const currentState = await this.stateManager.loadAgentState(sessionId);
+      const currentState = await this.coordinator.loadAgentState(sessionId);
       if (!currentState) {
         throw new Error(`Agent state not found for session ${sessionId}`);
       }
@@ -458,7 +461,7 @@ export class AgentRuntimeService {
       }
 
       // 更新会话状态为运行中
-      await this.stateManager.saveAgentState(sessionId, {
+      await this.coordinator.saveAgentState(sessionId, {
         ...currentState,
         lastModified: new Date().toISOString(),
         status: 'running',
