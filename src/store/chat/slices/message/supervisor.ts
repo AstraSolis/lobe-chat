@@ -26,8 +26,8 @@ export interface SupervisorDecisionResult {
 export type SupervisorToolName = 'create_todo' | 'finish_todo' | 'trigger_agent';
 
 export interface SupervisorToolCall {
-  tool_name: SupervisorToolName;
   parameter?: unknown;
+  tool_name: SupervisorToolName;
 }
 
 export interface SupervisorContext {
@@ -248,8 +248,8 @@ export class GroupChatSupervisor {
         primaryError === '__LEGACY_FORMAT__'
           ? 'legacy format detected'
           : primaryError instanceof Error
-          ? primaryError.message
-          : String(primaryError);
+            ? primaryError.message
+            : String(primaryError);
       const legacyMessage =
         legacyError instanceof Error ? legacyError.message : String(legacyError);
 
@@ -315,14 +315,17 @@ export class GroupChatSupervisor {
       typeof raw.tool_name === 'string'
         ? raw.tool_name
         : typeof raw.toolName === 'string'
-        ? raw.toolName
-        : typeof raw.name === 'string'
-        ? raw.name
-        : functionCallName;
+          ? raw.toolName
+          : typeof raw.name === 'string'
+            ? raw.name
+            : functionCallName;
 
     if (!potentialName) return null;
 
-    const normalizedName = potentialName.trim().toLowerCase().replace(/[-\s]+/g, '_');
+    const normalizedName = potentialName
+      .trim()
+      .toLowerCase()
+      .replaceAll(/[\s-]+/g, '_');
     if (!['create_todo', 'finish_todo', 'trigger_agent'].includes(normalizedName)) {
       return null;
     }
@@ -363,12 +366,14 @@ export class GroupChatSupervisor {
 
     toolCalls.forEach((call) => {
       switch (call.tool_name) {
-        case 'create_todo':
+        case 'create_todo': {
           this.applyCreateTodo(todos, call.parameter);
           break;
-        case 'finish_todo':
+        }
+        case 'finish_todo': {
           this.applyFinishTodo(todos, call.parameter);
           break;
+        }
         case 'trigger_agent': {
           const decision = this.buildDecisionFromTool(call.parameter, availableAgents, context);
           if (decision) {
@@ -562,13 +567,26 @@ export class GroupChatSupervisor {
       typeof payload.instruction === 'string'
         ? payload.instruction
         : typeof payload.message === 'string'
-        ? payload.message
-        : undefined;
+          ? payload.message
+          : undefined;
 
     let target: string | undefined;
-    if (typeof payload.target === 'string') target = payload.target;
-    else if (typeof payload.recipient === 'string') target = payload.recipient;
-    else if (typeof payload.to === 'string') target = payload.to;
+    switch ('string') {
+    case typeof payload.target: {
+    target = payload.target;
+    break;
+    }
+    case typeof payload.recipient: {
+    target = payload.recipient;
+    break;
+    }
+    case typeof payload.to: { {
+    target = payload.to;
+    // No default
+    }
+    break;
+    }
+    }
 
     if (target && target !== 'user') {
       const targetExists = availableAgents.some((agent) => agent.id === target);
@@ -653,11 +671,12 @@ export class GroupChatSupervisor {
       if (!Array.isArray(items)) return [];
 
       return items
-        .filter((item): item is SupervisorTodoItem =>
-          typeof item === 'object' &&
-          item !== null &&
-          typeof (item as any).content === 'string' &&
-          typeof (item as any).finished === 'boolean',
+        .filter(
+          (item): item is SupervisorTodoItem =>
+            typeof item === 'object' &&
+            item !== null &&
+            typeof (item as any).content === 'string' &&
+            typeof (item as any).finished === 'boolean',
         )
         .map((item) => ({
           content: (item as SupervisorTodoItem).content,

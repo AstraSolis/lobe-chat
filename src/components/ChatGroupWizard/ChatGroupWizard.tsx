@@ -17,7 +17,7 @@ import { ChangeEvent, memo, useCallback, useEffect, useMemo, useState } from 're
 import { useTranslation } from 'react-i18next';
 import { Flexbox } from 'react-layout-kit';
 
-import { DEFAULT_AVATAR, DEFAULT_ORCHESTRATOR_AVATAR } from '@/const/meta';
+import { DEFAULT_AVATAR, DEFAULT_SUPERVISOR_AVATAR } from '@/const/meta';
 import ModelSelect from '@/features/ModelSelect';
 import { useEnabledChatModels } from '@/hooks/useEnabledChatModels';
 import { useSessionStore } from '@/store/session';
@@ -571,7 +571,7 @@ const ChatGroupWizard = memo<ChatGroupWizardProps>(
               <Flexbox flex={1} gap={16} style={{ overflowY: 'auto' }}>
                 {!isHostRemoved && (
                   <Flexbox align="center" className={styles.hostCard} gap={12} horizontal>
-                    <Avatar avatar={DEFAULT_ORCHESTRATOR_AVATAR} shape="circle" size={40} />
+                    <Avatar avatar={DEFAULT_SUPERVISOR_AVATAR} shape="circle" size={40} />
                     <Flexbox flex={1} gap={2}>
                       <Text style={{ fontSize: 14, fontWeight: 500 }}>
                         {t('groupWizard.host.title')}

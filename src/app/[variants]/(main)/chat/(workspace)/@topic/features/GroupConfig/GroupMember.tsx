@@ -7,7 +7,7 @@ import { useTranslation } from 'react-i18next';
 import { Flexbox } from 'react-layout-kit';
 
 import { MemberSelectionModal } from '@/components/MemberSelectionModal';
-import { DEFAULT_AVATAR, DEFAULT_ORCHESTRATOR_AVATAR } from '@/const/meta';
+import { DEFAULT_AVATAR, DEFAULT_SUPERVISOR_AVATAR } from '@/const/meta';
 import { useChatStore } from '@/store/chat';
 import { chatSelectors } from '@/store/chat/selectors';
 import { useChatGroupStore } from '@/store/chatGroup';
@@ -131,7 +131,7 @@ const GroupMember = memo<GroupMemberProps>(
                   title={t('groupSidebar.members.removeMember')}
                 />
               }
-              avatar={DEFAULT_ORCHESTRATOR_AVATAR}
+              avatar={DEFAULT_SUPERVISOR_AVATAR}
               generating={isSupervisorLoading}
               generatingTooltip={t('groupSidebar.members.orchestratorThinking')}
               id={'orchestrator'}

@@ -4,7 +4,7 @@ import { memo } from 'react';
 import { useTranslation } from 'react-i18next';
 
 import ChatItem from '@/components/ChatItem/ChatItem';
-import { DEFAULT_ORCHESTRATOR_AVATAR } from '@/const/meta';
+import { DEFAULT_SUPERVISOR_AVATAR } from '@/const/meta';
 import { ChatErrorType } from '@/types/fetch';
 import { ChatMessage } from '@/types/message';
 
@@ -23,7 +23,7 @@ const SupervisorMessage = memo<SupervisorMessageProps>(({ message }) => {
   return (
     <ChatItem
       avatar={{
-        avatar: DEFAULT_ORCHESTRATOR_AVATAR,
+        avatar: DEFAULT_SUPERVISOR_AVATAR,
         title: t('groupSidebar.members.orchestrator'),
       }}
       error={{

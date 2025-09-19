@@ -47,7 +47,7 @@ export interface ChatMessageExtra {
 
 export interface ChatMessage {
   // Group chat fields (alphabetically before other fields)
-  agentId?: string;
+  agentId?: string | 'supervisor';
   chunksList?: ChatFileChunk[];
   content: string;
   createdAt: number;

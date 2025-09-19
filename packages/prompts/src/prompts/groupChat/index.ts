@@ -164,17 +164,23 @@ RULES:
   - "finish_todo": mark todos as completed. Use true to finish the next unfinished item, {"index": 0} for a specific position, or {"content": "..."} to match by text. Use {"all": true} to close everything.
   - "trigger_agent": ask an agent to speak. Parameter must be {"id": "agentId"} with optional "instruction" and optional "target".
 - Execute tools in the order they should happen. Return [] when no further action is needed.
-- Only reference agents from the member list. Never invent new IDs.
+- Stop the conversation by returning [] (an empty array).
 - ${dmRules}
 - ${naturalFlowRule}
+
+WHEN ASKING AGENTS TO SPEAK:
+
+- Only reference agents from the member list. Never invent new IDs.
 - Provide concise English instructions when guiding agents via "instruction".
+- Be concise and to the point. Each instruction should no longer than 10 words.
+- Always use English.
+
+WHEN GENERATING TODOS:
+
+- Break down the main objective into logical, sequential todos
+- Be concise and to the point. Each todo should no longer than 10 words.
+- Match user's language.
 - Keep todo items synchronized with the context. Finish or create todos as progress changes.
-
-RESPONSE FORMAT:
-
-- JSON array only, nothing else. Example:
-${exampleArray}
-- Stop the conversation by returning [] (an empty array).
 
 Now share your decision.
 `;

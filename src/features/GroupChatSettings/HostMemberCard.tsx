@@ -8,7 +8,7 @@ import { memo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Flexbox } from 'react-layout-kit';
 
-import { DEFAULT_ORCHESTRATOR_AVATAR } from '@/const/meta';
+import { DEFAULT_SUPERVISOR_AVATAR } from '@/const/meta';
 
 const useStyles = createStyles(({ css, token, isDarkMode }) => ({
   container: css`
@@ -64,7 +64,7 @@ const HostMemberCard = memo<HostMemberCardProps>(({ checked, loading, onToggle }
           <Flexbox align={'center'} horizontal justify={'space-between'}>
             <Flexbox align={'center'} flex={1} gap={8} horizontal style={{ minWidth: 0 }}>
               <Avatar
-                avatar={DEFAULT_ORCHESTRATOR_AVATAR}
+                avatar={DEFAULT_SUPERVISOR_AVATAR}
                 shape="circle"
                 size={24}
                 style={{ flexShrink: 0 }}
