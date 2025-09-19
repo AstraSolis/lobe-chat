@@ -62,11 +62,11 @@ export async function GET(request: NextRequest) {
             // 按时间顺序发送历史事件（最早的在前面）
             const sortedHistory = history.reverse();
 
-            sortedHistory.forEach((event, index) => {
+            sortedHistory.forEach((event) => {
               // 只发送比 lastEventId 更新的事件
               if (!lastEventId || lastEventId === '0' || event.timestamp.toString() > lastEventId) {
                 try {
-                  writer.writeStreamEvent(event, `history_${event.timestamp}_${index}`);
+                  writer.writeStreamEvent(event, event.id || event.sessionId);
                 } catch (error) {
                   console.error('[Agent Stream] Error sending history event:', error);
                 }
@@ -98,7 +98,7 @@ export async function GET(request: NextRequest) {
             sessionId,
             lastEventId,
             (events) => {
-              events.forEach((event, index) => {
+              events.forEach((event) => {
                 try {
                   // 添加 SSE 特定的字段
                   const sseEvent = {
@@ -109,7 +109,7 @@ export async function GET(request: NextRequest) {
 
                   writer.writeStreamEvent(
                     sseEvent,
-                    `realtime_${event.timestamp || Date.now()}_${index}`,
+                    event.id || event.sessionId, // Use Redis stream event ID or sessionId as fallback
                   );
                 } catch (error) {
                   console.error('[Agent Stream] Error sending event:', error);

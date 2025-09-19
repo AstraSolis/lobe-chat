@@ -7,6 +7,7 @@ const log = debug('lobe-server:agent-runtime:stream-event-manager');
 
 export interface StreamEvent {
   data: any;
+  id?: string; // Redis Stream event ID
   sessionId: string;
   stepIndex: number;
   timestamp: number;

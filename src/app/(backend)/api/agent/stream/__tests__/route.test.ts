@@ -188,8 +188,8 @@ describe('/api/agent/stream route', () => {
       // Verify exact stream format - connection event + filtered historical events (new SSE format)
       expect(chunks).toEqual([
         `id: conn_${MOCK_TIMESTAMP}\nevent: connected\ndata: {"lastEventId":"100","sessionId":"test-session","timestamp":${MOCK_TIMESTAMP},"type":"connected"}\n\n`,
-        `id: history_150_0\nevent: stream_start\ndata: {"type":"stream_start","timestamp":150,"sessionId":"test-session","data":{"messageId":"msg1"}}\n\n`,
-        `id: history_250_1\nevent: stream_chunk\ndata: {"type":"stream_chunk","timestamp":250,"sessionId":"test-session","data":{"content":"world"}}\n\n`,
+        `id: test-session\nevent: stream_start\ndata: {"type":"stream_start","timestamp":150,"sessionId":"test-session","data":{"messageId":"msg1"}}\n\n`,
+        `id: test-session\nevent: stream_chunk\ndata: {"type":"stream_chunk","timestamp":250,"sessionId":"test-session","data":{"content":"world"}}\n\n`,
       ]);
 
       // Verify API calls
@@ -270,9 +270,20 @@ describe('/api/agent/stream route', () => {
       // Verify exact stream format - only events with timestamp > 200 are included (new SSE format)
       // Note: indices are based on original array position, not filtered position
       expect(chunks).toEqual([
-        `id: conn_${MOCK_TIMESTAMP}\nevent: connected\ndata: {"lastEventId":"200","sessionId":"test-session","timestamp":${MOCK_TIMESTAMP},"type":"connected"}\n\n`,
-        `id: history_250_2\nevent: stream_chunk\ndata: {"type":"stream_chunk","timestamp":250,"sessionId":"test-session","data":{"content":"world"}}\n\n`,
-        `id: history_300_3\nevent: stream_end\ndata: {"type":"stream_end","timestamp":300,"sessionId":"test-session","data":{"messageId":"msg3"}}\n\n`,
+        `id: conn_${MOCK_TIMESTAMP}
+event: connected
+data: {"lastEventId":"200","sessionId":"test-session","timestamp":${MOCK_TIMESTAMP},"type":"connected"}
+
+`,
+        `id: test-session
+event: stream_chunk
+data: {"type":"stream_chunk","timestamp":250,"sessionId":"test-session","data":{"content":"world"}}
+
+`,
+        `id: test-session
+event: stream_end
+data: {"type":"stream_end","timestamp":300,"sessionId":"test-session","data":{"messageId":"msg3"}}
+\n`,
       ]);
 
       // Verify API calls
