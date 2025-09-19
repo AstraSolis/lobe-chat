@@ -66,7 +66,13 @@ export async function GET(request: NextRequest) {
               // 只发送比 lastEventId 更新的事件
               if (!lastEventId || lastEventId === '0' || event.timestamp.toString() > lastEventId) {
                 try {
-                  writer.writeStreamEvent(event, event.id || event.sessionId);
+                  // 添加 SSE 特定的字段，保持与实时事件格式一致
+                  const sseEvent = {
+                    ...event,
+                    sessionId,
+                    timestamp: event.timestamp || Date.now(),
+                  };
+                  writer.writeStreamEvent(sseEvent, sessionId);
                 } catch (error) {
                   console.error('[Agent Stream] Error sending history event:', error);
                 }
@@ -107,10 +113,28 @@ export async function GET(request: NextRequest) {
                     timestamp: event.timestamp || Date.now(),
                   };
 
-                  writer.writeStreamEvent(
-                    sseEvent,
-                    event.id || event.sessionId, // Use Redis stream event ID or sessionId as fallback
-                  );
+                  writer.writeStreamEvent(sseEvent, sessionId);
+
+                  // 如果收到 agent_runtime_end 事件，停止心跳并准备关闭连接
+                  if (event.type === 'agent_runtime_end') {
+                    log(
+                      `Agent runtime ended for session ${sessionId}, preparing to close connection`,
+                    );
+
+                    // 延迟关闭连接，确保客户端有时间处理最后的事件
+                    setTimeout(() => {
+                      try {
+                        // eslint-disable-next-line @typescript-eslint/no-use-before-define
+                        cleanup();
+                        controller.close();
+                        log(
+                          `SSE connection closed after agent runtime end for session ${sessionId}`,
+                        );
+                      } catch (closeError) {
+                        console.error('[Agent Stream] Error closing connection:', closeError);
+                      }
+                    }, 1000); // 1秒延迟，给客户端处理时间
+                  }
                 } catch (error) {
                   console.error('[Agent Stream] Error sending event:', error);
                 }

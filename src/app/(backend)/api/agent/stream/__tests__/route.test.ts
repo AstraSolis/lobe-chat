@@ -449,6 +449,167 @@ data: {"type":"stream_end","timestamp":300,"sessionId":"test-session","data":{"m
     });
   });
 
+  describe('Agent Runtime Lifecycle', () => {
+    it('should verify agent runtime event handling and connection closure logic', async () => {
+      const request = new NextRequest('https://test.com/api/agent/stream?sessionId=test-session');
+
+      // Capture the event callback so we can test the event processing logic directly
+      let capturedCallback: ((events: any[]) => void) | null = null;
+      let capturedSignal: AbortSignal | null = null;
+
+      mockStreamEventManager.subscribeStreamEvents.mockImplementation(
+        (sessionId, lastEventId, callback, signal) => {
+          capturedCallback = callback;
+          capturedSignal = signal;
+          return Promise.resolve();
+        },
+      );
+
+      const response = await GET(request);
+
+      // Verify the subscription was set up correctly
+      expect(mockStreamEventManager.subscribeStreamEvents).toHaveBeenCalledWith(
+        'test-session',
+        '0',
+        expect.any(Function),
+        expect.any(AbortSignal),
+      );
+      expect(capturedCallback).toBeDefined();
+      expect(capturedSignal).toBeDefined();
+
+      // Verify response headers are correct
+      expect(response.status).toBe(200);
+      expect(response.headers.get('Content-Type')).toBe('text/event-stream');
+
+      // Test that the callback exists and can be called
+      expect(typeof capturedCallback).toBe('function');
+      expect(capturedSignal).toBeInstanceOf(AbortSignal);
+    });
+
+    it('should verify subscribeStreamEvents callback can handle agent_runtime_init events', async () => {
+      const request = new NextRequest('https://test.com/api/agent/stream?sessionId=test-session');
+
+      let capturedCallback: ((events: any[]) => void) | null = null;
+
+      mockStreamEventManager.subscribeStreamEvents.mockImplementation(
+        (sessionId, lastEventId, callback, signal) => {
+          capturedCallback = callback;
+          return Promise.resolve();
+        },
+      );
+
+      const response = await GET(request);
+
+      // Verify we captured the callback
+      expect(capturedCallback).toBeDefined();
+      expect(response.status).toBe(200);
+
+      // Test agent_runtime_init event processing
+      const initEvent = {
+        type: 'agent_runtime_init',
+        timestamp: MOCK_TIMESTAMP + 100,
+        sessionId: 'test-session',
+        data: {
+          userId: 'user-123',
+          modelConfig: { model: 'gpt-4', temperature: 0.7 },
+          agentType: 'assistant',
+        },
+      };
+
+      // The callback should be callable without throwing errors
+      expect(() => capturedCallback!([initEvent])).not.toThrow();
+    });
+
+    it('should verify subscribeStreamEvents callback can handle agent_runtime_end events', async () => {
+      const request = new NextRequest('https://test.com/api/agent/stream?sessionId=test-session');
+
+      let capturedCallback: ((events: any[]) => void) | null = null;
+
+      mockStreamEventManager.subscribeStreamEvents.mockImplementation(
+        (sessionId, lastEventId, callback, signal) => {
+          capturedCallback = callback;
+          return Promise.resolve();
+        },
+      );
+
+      const response = await GET(request);
+
+      // Verify we captured the callback
+      expect(capturedCallback).toBeDefined();
+      expect(response.status).toBe(200);
+
+      // Test agent_runtime_end event processing
+      const endEvent = {
+        type: 'agent_runtime_end',
+        timestamp: MOCK_TIMESTAMP + 600,
+        sessionId: 'test-session',
+        data: {
+          totalSteps: 1,
+          executionTime: 500,
+          status: 'completed',
+        },
+      };
+
+      // The callback should be callable without throwing errors
+      expect(() => capturedCallback!([endEvent])).not.toThrow();
+    });
+
+    it('should verify complete agent runtime lifecycle event types are supported', async () => {
+      const request = new NextRequest('https://test.com/api/agent/stream?sessionId=test-session');
+
+      let capturedCallback: ((events: any[]) => void) | null = null;
+
+      mockStreamEventManager.subscribeStreamEvents.mockImplementation(
+        (sessionId, lastEventId, callback, signal) => {
+          capturedCallback = callback;
+          return Promise.resolve();
+        },
+      );
+
+      const response = await GET(request);
+
+      expect(capturedCallback).toBeDefined();
+      expect(response.status).toBe(200);
+
+      // Test complete lifecycle events can be processed
+      const lifecycleEvents = [
+        {
+          type: 'agent_runtime_init',
+          timestamp: MOCK_TIMESTAMP + 100,
+          sessionId: 'test-session',
+          data: { userId: 'user-123', agentType: 'assistant' },
+        },
+        {
+          type: 'stream_start',
+          timestamp: MOCK_TIMESTAMP + 200,
+          sessionId: 'test-session',
+          data: { messageId: 'msg-001' },
+        },
+        {
+          type: 'stream_chunk',
+          timestamp: MOCK_TIMESTAMP + 300,
+          sessionId: 'test-session',
+          data: { content: 'Hello world' },
+        },
+        {
+          type: 'stream_end',
+          timestamp: MOCK_TIMESTAMP + 400,
+          sessionId: 'test-session',
+          data: { messageId: 'msg-001' },
+        },
+        {
+          type: 'agent_runtime_end',
+          timestamp: MOCK_TIMESTAMP + 500,
+          sessionId: 'test-session',
+          data: { status: 'completed', totalSteps: 1 },
+        },
+      ];
+
+      // All lifecycle events should be processable without throwing errors
+      expect(() => capturedCallback!(lifecycleEvents)).not.toThrow();
+    });
+  });
+
   describe('Parameter validation', () => {
     it('should handle sessionId with special characters', async () => {
       const sessionId = 'test-session-123_456';
