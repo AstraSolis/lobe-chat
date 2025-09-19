@@ -66,146 +66,387 @@ describe('/api/agent/stream route', () => {
       );
       expect(response.headers.get('X-Accel-Buffering')).toBe('no');
     });
-
-    it('should parse query parameters correctly', async () => {
-      const url =
-        'https://test.com/api/agent/stream?sessionId=test-session&lastEventId=123&includeHistory=true';
-      const request = new NextRequest(url);
-
-      // Mock getStreamHistory to return empty array to avoid async complexity in this test
-      mockStreamEventManager.getStreamHistory.mockResolvedValue([]);
-
-      const response = await GET(request);
-
-      expect(response.status).toBe(200);
-      expect(StreamEventManager).toHaveBeenCalled();
-    });
-
-    it('should handle includeHistory=false by not calling getStreamHistory', async () => {
-      const url = 'https://test.com/api/agent/stream?sessionId=test-session&includeHistory=false';
-      const request = new NextRequest(url);
-
-      const response = await GET(request);
-
-      expect(response.status).toBe(200);
-      expect(mockStreamEventManager.getStreamHistory).not.toHaveBeenCalled();
-    });
-
-    it('should parse lastEventId parameter with default value', async () => {
-      const request = new NextRequest('https://test.com/api/agent/stream?sessionId=test-session');
-
-      const response = await GET(request);
-
-      expect(response.status).toBe(200);
-      // Since we're testing the parameter parsing, we just verify the response is successful
-    });
-
-    it('should create StreamEventManager instance', async () => {
-      const request = new NextRequest('https://test.com/api/agent/stream?sessionId=test-session');
-
-      await GET(request);
-
-      expect(StreamEventManager).toHaveBeenCalledTimes(1);
-    });
   });
 
-  describe('Stream functionality', () => {
-    it('should handle stream creation without throwing errors', async () => {
-      const request = new NextRequest('https://test.com/api/agent/stream?sessionId=test-session');
-
-      // Mock successful stream history call
-      mockStreamEventManager.getStreamHistory.mockResolvedValue([]);
-
-      const response = await GET(request);
-
-      expect(response.status).toBe(200);
-      expect(response.body).toBeDefined();
-      expect(response.body).toBeInstanceOf(ReadableStream);
-    });
-
-    it('should initialize stream with connection event for includeHistory=false', async () => {
+  describe('Stream functionality with exact data verification', () => {
+    it('should send connection event in exact SSE format', async () => {
       const request = new NextRequest(
-        'https://test.com/api/agent/stream?sessionId=test-session&includeHistory=false',
+        'https://test.com/api/agent/stream?sessionId=test-session&lastEventId=123',
       );
 
       const response = await GET(request);
-      const reader = response.body?.getReader();
+      const decoder = new TextDecoder();
+      const reader = response.body!.getReader();
 
-      expect(reader).toBeDefined();
-      if (reader) {
-        try {
-          // Read the first chunk which should be the connection event
-          const { done, value } = await reader.read();
-          expect(done).toBe(false);
-          expect(value).toBeDefined();
+      // Collect all chunks
+      const chunks = [];
+      let readCount = 0;
+      const maxReads = 1; // Only read connection event
 
-          if (value && value instanceof Uint8Array) {
-            const chunk = new TextDecoder().decode(value);
-            expect(chunk).toContain('data: ');
+      try {
+        while (readCount < maxReads) {
+          const readPromise = reader.read();
+          const timeoutPromise = new Promise((_, reject) =>
+            setTimeout(() => reject(new Error('Read timeout')), 1000),
+          );
 
-            // Parse the JSON data
-            const dataLine = chunk.split('\n')[0];
-            const jsonData = dataLine.replace('data: ', '');
-            const event = JSON.parse(jsonData);
+          const result = (await Promise.race([
+            readPromise,
+            timeoutPromise,
+          ])) as ReadableStreamReadResult<Uint8Array>;
 
-            expect(event.type).toBe('connected');
-            expect(event.sessionId).toBe('test-session');
-            expect(event.lastEventId).toBe('0');
-            expect(event.timestamp).toBeDefined();
+          if (result.done) break;
+          if (result.value) {
+            const chunk =
+              result.value instanceof Uint8Array
+                ? decoder.decode(result.value)
+                : String(result.value);
+            chunks.push(chunk);
+            readCount++;
           }
-        } catch (error) {
-          // If we can't read the stream, just verify the response status
-          expect(response.status).toBe(200);
-        } finally {
-          reader.releaseLock();
         }
+      } catch (error) {
+        // Timeout or error
+      } finally {
+        reader.releaseLock();
       }
+
+      // Parse the connection event to get actual timestamp
+      const connectionData = chunks[0].replace('data: ', '').replace('\n\n', '');
+      const connectionEvent = JSON.parse(connectionData);
+
+      // Verify exact stream format
+      expect(chunks).toEqual([
+        `data: {"lastEventId":"123","sessionId":"test-session","timestamp":${connectionEvent.timestamp},"type":"connected"}\n\n`,
+      ]);
     });
 
-    it('should handle getStreamHistory error gracefully when includeHistory=true', async () => {
+    it('should verify getStreamHistory with exact historical events format', async () => {
+      const request = new NextRequest(
+        'https://test.com/api/agent/stream?sessionId=test-session&includeHistory=true&lastEventId=100',
+      );
+
+      // Mock getStreamHistory to return specific events
+      const mockEvents = [
+        {
+          type: 'stream_end',
+          timestamp: 300,
+          sessionId: 'test-session',
+          data: { messageId: 'msg3' },
+        },
+        {
+          type: 'stream_chunk',
+          timestamp: 250,
+          sessionId: 'test-session',
+          data: { content: 'world' },
+        },
+        {
+          type: 'stream_start',
+          timestamp: 150,
+          sessionId: 'test-session',
+          data: { messageId: 'msg1' },
+        },
+      ];
+      mockStreamEventManager.getStreamHistory.mockResolvedValue(mockEvents);
+
+      const response = await GET(request);
+      const decoder = new TextDecoder();
+      const reader = response.body!.getReader();
+
+      // Collect all chunks
+      const chunks = [];
+      let readCount = 0;
+      const maxReads = 3; // connection + 2 filtered historical events (timestamp > 100)
+
+      try {
+        while (readCount < maxReads) {
+          const readPromise = reader.read();
+          const timeoutPromise = new Promise((_, reject) =>
+            setTimeout(() => reject(new Error('Read timeout')), 500),
+          );
+
+          const result = (await Promise.race([
+            readPromise,
+            timeoutPromise,
+          ])) as ReadableStreamReadResult<Uint8Array>;
+
+          if (result.done) break;
+          if (result.value) {
+            const chunk =
+              result.value instanceof Uint8Array
+                ? decoder.decode(result.value)
+                : String(result.value);
+            chunks.push(chunk);
+            readCount++;
+          }
+        }
+      } catch (error) {
+        // Timeout or error
+      } finally {
+        reader.releaseLock();
+      }
+
+      // Parse the connection event to get actual timestamp
+      const connectionData = chunks[0].replace('data: ', '').replace('\n\n', '');
+      const connectionEvent = JSON.parse(connectionData);
+
+      // Verify exact stream format - connection event + all historical events (all have timestamp > 100)
+      expect(chunks).toEqual([
+        `data: {"lastEventId":"100","sessionId":"test-session","timestamp":${connectionEvent.timestamp},"type":"connected"}\n\n`,
+        `data: {"type":"stream_start","timestamp":150,"sessionId":"test-session","data":{"messageId":"msg1"}}\n\n`,
+        `data: {"type":"stream_chunk","timestamp":250,"sessionId":"test-session","data":{"content":"world"}}\n\n`,
+      ]);
+
+      // Verify API calls
+      expect(mockStreamEventManager.getStreamHistory).toHaveBeenCalledWith('test-session', 50);
+    });
+
+    it('should verify event filtering with exact format', async () => {
+      const request = new NextRequest(
+        'https://test.com/api/agent/stream?sessionId=test-session&includeHistory=true&lastEventId=200',
+      );
+
+      // Mock events where some should be filtered out
+      const mockEvents = [
+        {
+          type: 'stream_end',
+          timestamp: 300,
+          sessionId: 'test-session',
+          data: { messageId: 'msg3' },
+        }, // Should be included (300 > 200)
+        {
+          type: 'stream_chunk',
+          timestamp: 250,
+          sessionId: 'test-session',
+          data: { content: 'world' },
+        }, // Should be included (250 > 200)
+        {
+          type: 'stream_chunk',
+          timestamp: 200,
+          sessionId: 'test-session',
+          data: { content: 'hello' },
+        }, // Should be excluded (200 = 200)
+        {
+          type: 'stream_start',
+          timestamp: 150,
+          sessionId: 'test-session',
+          data: { messageId: 'msg1' },
+        }, // Should be excluded (150 < 200)
+      ];
+      mockStreamEventManager.getStreamHistory.mockResolvedValue(mockEvents);
+
+      const response = await GET(request);
+      const decoder = new TextDecoder();
+      const reader = response.body!.getReader();
+
+      // Collect all chunks
+      const chunks = [];
+      let readCount = 0;
+      const maxReads = 3; // connection + 2 filtered events
+
+      try {
+        while (readCount < maxReads) {
+          const readPromise = reader.read();
+          const timeoutPromise = new Promise((_, reject) =>
+            setTimeout(() => reject(new Error('Read timeout')), 500),
+          );
+
+          const result = (await Promise.race([
+            readPromise,
+            timeoutPromise,
+          ])) as ReadableStreamReadResult<Uint8Array>;
+
+          if (result.done) break;
+          if (result.value) {
+            const chunk =
+              result.value instanceof Uint8Array
+                ? decoder.decode(result.value)
+                : String(result.value);
+            chunks.push(chunk);
+            readCount++;
+          }
+        }
+      } catch (error) {
+        // Timeout or error
+      } finally {
+        reader.releaseLock();
+      }
+
+      // Parse the connection event to get actual timestamp
+      const connectionData = chunks[0].replace('data: ', '').replace('\n\n', '');
+      const connectionEvent = JSON.parse(connectionData);
+
+      // Verify exact stream format - only events with timestamp > 200 are included
+      expect(chunks).toEqual([
+        `data: {"lastEventId":"200","sessionId":"test-session","timestamp":${connectionEvent.timestamp},"type":"connected"}\n\n`,
+        `data: {"type":"stream_chunk","timestamp":250,"sessionId":"test-session","data":{"content":"world"}}\n\n`,
+        `data: {"type":"stream_end","timestamp":300,"sessionId":"test-session","data":{"messageId":"msg3"}}\n\n`,
+      ]);
+
+      // Verify API calls
+      expect(mockStreamEventManager.getStreamHistory).toHaveBeenCalledWith('test-session', 50);
+    });
+
+    it('should handle errors with exact error event format', async () => {
       const request = new NextRequest(
         'https://test.com/api/agent/stream?sessionId=test-session&includeHistory=true',
       );
 
       // Mock getStreamHistory to reject
-      mockStreamEventManager.getStreamHistory.mockRejectedValue(new Error('Redis error'));
-
-      const response = await GET(request);
-
-      expect(response.status).toBe(200);
-      expect(response.body).toBeInstanceOf(ReadableStream);
-    });
-
-    it('should handle successful getStreamHistory when includeHistory=true', async () => {
-      const request = new NextRequest(
-        'https://test.com/api/agent/stream?sessionId=test-session&includeHistory=true&lastEventId=100',
+      mockStreamEventManager.getStreamHistory.mockRejectedValue(
+        new Error('Redis connection failed'),
       );
 
-      // Mock getStreamHistory to return events
-      const mockEvents = [
-        { type: 'stream_start', timestamp: 200, data: { test: 'data1' } },
-        { type: 'stream_chunk', timestamp: 150, data: { test: 'data2' } },
-        { type: 'stream_end', timestamp: 50, data: { test: 'data3' } },
-      ];
-      mockStreamEventManager.getStreamHistory.mockResolvedValue(mockEvents);
+      const response = await GET(request);
+      const decoder = new TextDecoder();
+      const reader = response.body!.getReader();
+
+      // Collect all chunks
+      const chunks = [];
+      let readCount = 0;
+      const maxReads = 2; // connection + error event
+
+      try {
+        while (readCount < maxReads) {
+          const readPromise = reader.read();
+          const timeoutPromise = new Promise((_, reject) =>
+            setTimeout(() => reject(new Error('Read timeout')), 500),
+          );
+
+          const result = (await Promise.race([
+            readPromise,
+            timeoutPromise,
+          ])) as ReadableStreamReadResult<Uint8Array>;
+
+          if (result.done) break;
+          if (result.value) {
+            const chunk =
+              result.value instanceof Uint8Array
+                ? decoder.decode(result.value)
+                : String(result.value);
+            chunks.push(chunk);
+            readCount++;
+          }
+        }
+      } catch (error) {
+        // Timeout or error
+      } finally {
+        reader.releaseLock();
+      }
+
+      // Parse the connection event to get actual timestamp
+      const connectionData = chunks[0].replace('data: ', '').replace('\n\n', '');
+      const connectionEvent = JSON.parse(connectionData);
+
+      // Parse the error event to get actual timestamp
+      const errorData = chunks[1].replace('data: ', '').replace('\n\n', '');
+      const errorEvent = JSON.parse(errorData);
+
+      // Verify exact stream format - connection event + error event
+      expect(chunks).toEqual([
+        `data: {"lastEventId":"0","sessionId":"test-session","timestamp":${connectionEvent.timestamp},"type":"connected"}\n\n`,
+        `data: {"data":{"error":"Redis connection failed","phase":"history_loading"},"sessionId":"test-session","timestamp":${errorEvent.timestamp},"type":"error"}\n\n`,
+      ]);
+
+      // Verify getStreamHistory was called
+      expect(mockStreamEventManager.getStreamHistory).toHaveBeenCalledWith('test-session', 50);
+    });
+
+    it('should verify stream subscription with exact parameters', async () => {
+      const request = new NextRequest(
+        'https://test.com/api/agent/stream?sessionId=test-session&lastEventId=456',
+      );
+
+      mockStreamEventManager.subscribeStreamEvents.mockResolvedValue(undefined);
 
       const response = await GET(request);
 
       expect(response.status).toBe(200);
-      expect(mockStreamEventManager.getStreamHistory).toHaveBeenCalledWith('test-session', 50);
-    });
-  });
 
-  describe('Error handling', () => {
-    it('should handle invalid URL gracefully', async () => {
-      // Create a request with malformed URL parameters
-      const request = new NextRequest('https://test.com/api/agent/stream?sessionId=');
+      // Verify exact parameter passing
+      expect(mockStreamEventManager.subscribeStreamEvents).toHaveBeenCalledWith(
+        'test-session',
+        '456',
+        expect.any(Function), // callback function
+        expect.any(AbortSignal), // abort signal
+      );
+
+      // Verify the callback function structure
+      const callArgs = mockStreamEventManager.subscribeStreamEvents.mock.calls[0];
+      expect(callArgs).toHaveLength(4);
+      expect(typeof callArgs[2]).toBe('function'); // callback
+      expect(callArgs[3]).toBeInstanceOf(AbortSignal); // signal
+    });
+
+    it('should verify default parameters with exact values', async () => {
+      const request = new NextRequest('https://test.com/api/agent/stream?sessionId=test-session');
+
+      mockStreamEventManager.subscribeStreamEvents.mockResolvedValue(undefined);
 
       const response = await GET(request);
 
-      expect(response.status).toBe(400);
-      const data = await response.json();
-      expect(data.error).toBe('sessionId parameter is required');
+      expect(response.status).toBe(200);
+
+      // Verify default values are used
+      expect(mockStreamEventManager.subscribeStreamEvents).toHaveBeenCalledWith(
+        'test-session',
+        '0', // default lastEventId
+        expect.any(Function),
+        expect.any(AbortSignal),
+      );
+
+      // Verify getStreamHistory is NOT called when includeHistory defaults to false
+      expect(mockStreamEventManager.getStreamHistory).not.toHaveBeenCalled();
+    });
+
+    it('should verify SSE message structure with exact format specification', async () => {
+      const request = new NextRequest('https://test.com/api/agent/stream?sessionId=test-session');
+
+      const response = await GET(request);
+      const decoder = new TextDecoder();
+      const reader = response.body!.getReader();
+
+      // Collect all chunks
+      const chunks = [];
+      let readCount = 0;
+      const maxReads = 1; // Only read connection event
+
+      try {
+        while (readCount < maxReads) {
+          const readPromise = reader.read();
+          const timeoutPromise = new Promise((_, reject) =>
+            setTimeout(() => reject(new Error('Read timeout')), 1000),
+          );
+
+          const result = (await Promise.race([
+            readPromise,
+            timeoutPromise,
+          ])) as ReadableStreamReadResult<Uint8Array>;
+
+          if (result.done) break;
+          if (result.value) {
+            const chunk =
+              result.value instanceof Uint8Array
+                ? decoder.decode(result.value)
+                : String(result.value);
+            chunks.push(chunk);
+            readCount++;
+          }
+        }
+      } catch (error) {
+        // Timeout or error
+      } finally {
+        reader.releaseLock();
+      }
+
+      // Parse the connection event to get actual timestamp
+      const connectionData = chunks[0].replace('data: ', '').replace('\n\n', '');
+      const connectionEvent = JSON.parse(connectionData);
+
+      // Verify exact stream format with default lastEventId
+      expect(chunks).toEqual([
+        `data: {"lastEventId":"0","sessionId":"test-session","timestamp":${connectionEvent.timestamp},"type":"connected"}\n\n`,
+      ]);
     });
   });
 
@@ -240,23 +481,14 @@ describe('/api/agent/stream route', () => {
       expect(mockStreamEventManager.getStreamHistory).not.toHaveBeenCalled();
     });
 
-    it('should handle missing lastEventId parameter', async () => {
-      const request = new NextRequest('https://test.com/api/agent/stream?sessionId=test');
+    it('should handle invalid URL gracefully', async () => {
+      const request = new NextRequest('https://test.com/api/agent/stream?sessionId=');
 
       const response = await GET(request);
 
-      expect(response.status).toBe(200);
-      // Should default to '0'
-    });
-
-    it('should handle missing includeHistory parameter', async () => {
-      const request = new NextRequest('https://test.com/api/agent/stream?sessionId=test');
-
-      const response = await GET(request);
-
-      expect(response.status).toBe(200);
-      // Should default to false, so getStreamHistory should not be called
-      expect(mockStreamEventManager.getStreamHistory).not.toHaveBeenCalled();
+      expect(response.status).toBe(400);
+      const data = await response.json();
+      expect(data.error).toBe('sessionId parameter is required');
     });
   });
 });
