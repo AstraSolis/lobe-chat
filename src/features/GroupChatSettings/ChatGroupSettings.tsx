@@ -1,8 +1,16 @@
 'use client';
 
-import { Form, type FormGroupItemType, Select, SliderWithInput } from '@lobehub/ui';
+import {
+  Form,
+  type FormGroupItemType,
+  Icon,
+  Segmented,
+  Select,
+  SliderWithInput,
+} from '@lobehub/ui';
 import { Form as AntdForm, Input, Switch } from 'antd';
 import { isEqual } from 'lodash';
+import { Coffee, Rabbit, Turtle } from 'lucide-react';
 import { memo } from 'react';
 import { useTranslation } from 'react-i18next';
 
@@ -26,9 +34,21 @@ const ChatGroupSettings = memo(() => {
   const allowDM = AntdForm.useWatch('allowDM', form);
 
   const responseSpeedOptions = [
-    { label: t('settingGroupChat.responseSpeed.options.slow'), value: 'slow' },
-    { label: t('settingGroupChat.responseSpeed.options.medium'), value: 'medium' },
-    { label: t('settingGroupChat.responseSpeed.options.fast'), value: 'fast' },
+    {
+      icon: <Icon icon={Turtle} size={16} />,
+      label: t('settingGroupChat.responseSpeed.options.slow'),
+      value: 'slow',
+    },
+    {
+      icon: <Icon icon={Coffee} size={16} />,
+      label: t('settingGroupChat.responseSpeed.options.medium'),
+      value: 'medium',
+    },
+    {
+      icon: <Icon icon={Rabbit} size={16} />,
+      label: t('settingGroupChat.responseSpeed.options.fast'),
+      value: 'fast',
+    },
   ];
 
   const orchestratorSettings: FormGroupItemType = {
@@ -58,12 +78,7 @@ const ChatGroupSettings = memo(() => {
   const chatSettings: FormGroupItemType = {
     children: [
       {
-        children: (
-          <Select
-            options={responseSpeedOptions}
-            placeholder={t('settingGroupChat.responseSpeed.placeholder')}
-          />
-        ),
+        children: <Segmented options={responseSpeedOptions} />,
         desc: t('settingGroupChat.responseSpeed.desc'),
         label: t('settingGroupChat.responseSpeed.title'),
         name: 'responseSpeed',

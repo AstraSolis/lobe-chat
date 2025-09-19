@@ -610,45 +610,43 @@ const ChatGroupWizard = memo<ChatGroupWizardProps>(
                 )}
 
                 {selectedTemplate ? (
-                  <>
-                    {selectedTemplateMembers.length > 0 ? (
-                      <List
-                        items={selectedTemplateMembers.map((member) => ({
-                          actions: (
-                            <ActionIcon
-                              icon={X}
-                              onClick={() => handleRemoveMember(selectedTemplate, member.title)}
-                              size="small"
-                              style={{ color: '#999' }}
-                            />
-                          ),
-                          avatar: (
-                            <Avatar
-                              avatar={member.avatar}
-                              background={member.backgroundColor}
-                              shape="circle"
-                              size={40}
-                            />
-                          ),
-                          description: member.systemRole ? (
-                            <Tooltip title={member.systemRole}>
-                              <Text className={memberDescriptionClass} ellipsis={{ rows: 1 }}>
-                                {member.systemRole}
-                              </Text>
-                            </Tooltip>
-                          ) : null,
-                          key: member.key,
-                          showAction: true,
-                          title: member.title,
-                        }))}
-                      />
-                    ) : (
-                      <Empty
-                        description={t('groupWizard.noTemplateMembers')}
-                        image={Empty.PRESENTED_IMAGE_SIMPLE}
-                      />
-                    )}
-                  </>
+                  selectedTemplateMembers.length > 0 ? (
+                    <List
+                      items={selectedTemplateMembers.map((member) => ({
+                        actions: (
+                          <ActionIcon
+                            icon={X}
+                            onClick={() => handleRemoveMember(selectedTemplate, member.title)}
+                            size="small"
+                            style={{ color: '#999' }}
+                          />
+                        ),
+                        avatar: (
+                          <Avatar
+                            avatar={member.avatar}
+                            background={member.backgroundColor}
+                            shape="circle"
+                            size={40}
+                          />
+                        ),
+                        description: member.systemRole ? (
+                          <Tooltip title={member.systemRole}>
+                            <Text className={memberDescriptionClass} ellipsis={{ rows: 1 }}>
+                              {member.systemRole}
+                            </Text>
+                          </Tooltip>
+                        ) : null,
+                        key: member.key,
+                        showAction: true,
+                        title: member.title,
+                      }))}
+                    />
+                  ) : (
+                    <Empty
+                      description={t('groupWizard.noTemplateMembers')}
+                      image={Empty.PRESENTED_IMAGE_SIMPLE}
+                    />
+                  )
                 ) : selectedAgentListItems.length > 0 ? (
                   <List items={selectedAgentListItems} />
                 ) : null}

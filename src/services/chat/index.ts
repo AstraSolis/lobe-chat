@@ -427,7 +427,7 @@ class ChatService {
       sdkType = providerConfig?.settings.sdkType || 'openai';
     }
 
-    const requestInit: RequestInit = {
+    const requestInit = {
       body: JSON.stringify(payload),
       headers,
       method: 'POST',

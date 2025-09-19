@@ -338,24 +338,6 @@ export const chatAiGroupChat: StateCreator<
       const state = get();
       const key = messageMapKey(groupId, activeTopicId);
       const history = state.messagesMap[key] || [];
-      const existingSupervisorMessage = [...history]
-        .reverse()
-        .find((message) => message.agentId === 'supervisor' && message.role === 'system');
-
-      // if (existingSupervisorMessage) {
-      //   if (existingSupervisorMessage.content === content) {
-      //     return;
-      //   }
-
-      //   try {
-      //     await internal_updateMessageContent(existingSupervisorMessage.id, content);
-      //   } catch (error) {
-      //     console.error('Failed to update supervisor todo message:', error);
-      //   }
-
-      //   return;
-      // }
-
       const supervisorMessage: CreateMessageParams = {
         content,
         groupId,
