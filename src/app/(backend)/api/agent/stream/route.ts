@@ -1,3 +1,4 @@
+import { createSSEHeaders, createSSEWriter } from '@lobechat/utils/server';
 import debug from 'debug';
 import { NextRequest, NextResponse } from 'next/server';
 
@@ -47,15 +48,10 @@ export async function GET(request: NextRequest) {
     },
 
     start(controller) {
-      // 发送连接确认事件
-      const connectEvent = {
-        lastEventId,
-        sessionId,
-        timestamp: Date.now(),
-        type: 'connected',
-      };
+      const writer = createSSEWriter(controller);
 
-      controller.enqueue(`data: ${JSON.stringify(connectEvent)}\n\n`);
+      // 发送连接确认事件
+      writer.writeConnection(sessionId, lastEventId);
       log(`SSE connection established for session ${sessionId}`);
 
       // 如果需要，先发送历史事件
@@ -66,11 +62,11 @@ export async function GET(request: NextRequest) {
             // 按时间顺序发送历史事件（最早的在前面）
             const sortedHistory = history.reverse();
 
-            sortedHistory.forEach((event) => {
+            sortedHistory.forEach((event, index) => {
               // 只发送比 lastEventId 更新的事件
               if (!lastEventId || lastEventId === '0' || event.timestamp.toString() > lastEventId) {
                 try {
-                  controller.enqueue(`data: ${JSON.stringify(event)}\n\n`);
+                  writer.writeStreamEvent(event, `history_${event.timestamp}_${index}`);
                 } catch (error) {
                   console.error('[Agent Stream] Error sending history event:', error);
                 }
@@ -84,18 +80,8 @@ export async function GET(request: NextRequest) {
           .catch((error) => {
             console.error('[Agent Stream] Failed to load history:', error);
 
-            const errorEvent = {
-              data: {
-                error: error.message,
-                phase: 'history_loading',
-              },
-              sessionId,
-              timestamp: Date.now(),
-              type: 'error',
-            };
-
             try {
-              controller.enqueue(`data: ${JSON.stringify(errorEvent)}\n\n`);
+              writer.writeError(error, sessionId, 'history_loading');
             } catch (controllerError) {
               console.error('[Agent Stream] Failed to send error event:', controllerError);
             }
@@ -112,7 +98,7 @@ export async function GET(request: NextRequest) {
             sessionId,
             lastEventId,
             (events) => {
-              events.forEach((event) => {
+              events.forEach((event, index) => {
                 try {
                   // 添加 SSE 特定的字段
                   const sseEvent = {
@@ -121,7 +107,10 @@ export async function GET(request: NextRequest) {
                     timestamp: event.timestamp || Date.now(),
                   };
 
-                  controller.enqueue(`data: ${JSON.stringify(sseEvent)}\n\n`);
+                  writer.writeStreamEvent(
+                    sseEvent,
+                    `realtime_${event.timestamp || Date.now()}_${index}`,
+                  );
                 } catch (error) {
                   console.error('[Agent Stream] Error sending event:', error);
                 }
@@ -133,18 +122,8 @@ export async function GET(request: NextRequest) {
           if (!abortController.signal.aborted) {
             console.error('[Agent Stream] Subscription error:', error);
 
-            const errorEvent = {
-              data: {
-                error: (error as Error).message,
-                phase: 'stream_subscription',
-              },
-              sessionId,
-              timestamp: Date.now(),
-              type: 'error',
-            };
-
             try {
-              controller.enqueue(`data: ${JSON.stringify(errorEvent)}\n\n`);
+              writer.writeError(error as Error, sessionId, 'stream_subscription');
             } catch (controllerError) {
               console.error('[Agent Stream] Failed to send subscription error:', controllerError);
             }
@@ -188,33 +167,6 @@ export async function GET(request: NextRequest) {
 
   // 设置 SSE 响应头
   return new Response(stream, {
-    headers: {
-      'Access-Control-Allow-Headers': 'Cache-Control, Last-Event-ID',
-      'Access-Control-Allow-Methods': 'GET',
-      'Access-Control-Allow-Origin': '*',
-      'Cache-Control': 'no-cache, no-transform',
-      'Connection': 'keep-alive',
-      'Content-Type': 'text/event-stream',
-      'X-Accel-Buffering': 'no', // 禁用 Nginx 缓冲
-    },
-  });
-}
-
-/**
- * OPTIONS request handler (CORS preflight)
- */
-export async function OPTIONS() {
-  if (!isEnableAgent()) {
-    return NextResponse.json({ error: 'Agent features are not enabled' }, { status: 404 });
-  }
-
-  return new Response(null, {
-    headers: {
-      'Access-Control-Allow-Headers': 'Cache-Control, Last-Event-ID',
-      'Access-Control-Allow-Methods': 'GET, OPTIONS',
-      'Access-Control-Allow-Origin': '*',
-      'Access-Control-Max-Age': '86400',
-    },
-    status: 200,
+    headers: createSSEHeaders(),
   });
 }

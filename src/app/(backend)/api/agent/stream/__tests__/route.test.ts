@@ -19,11 +19,14 @@ vi.mock('@/server/modules/AgentRuntime', () => ({
 
 describe('/api/agent/stream route', () => {
   const isEnableAgentSpy = vi.spyOn(isEnableAgentModule, 'isEnableAgent');
+  const MOCK_TIMESTAMP = 1758203237000;
 
   beforeEach(() => {
     vi.resetAllMocks();
     // Default to enabled for most tests
     isEnableAgentSpy.mockReturnValue(true);
+    // Mock Date.now to return consistent timestamp
+    vi.spyOn(Date, 'now').mockReturnValue(MOCK_TIMESTAMP);
   });
 
   afterEach(() => {
@@ -111,13 +114,9 @@ describe('/api/agent/stream route', () => {
         reader.releaseLock();
       }
 
-      // Parse the connection event to get actual timestamp
-      const connectionData = chunks[0].replace('data: ', '').replace('\n\n', '');
-      const connectionEvent = JSON.parse(connectionData);
-
-      // Verify exact stream format
+      // Verify exact stream format with mocked timestamp (new SSE format)
       expect(chunks).toEqual([
-        `data: {"lastEventId":"123","sessionId":"test-session","timestamp":${connectionEvent.timestamp},"type":"connected"}\n\n`,
+        `id: conn_${MOCK_TIMESTAMP}\nevent: connected\ndata: {"lastEventId":"123","sessionId":"test-session","timestamp":${MOCK_TIMESTAMP},"type":"connected"}\n\n`,
       ]);
     });
 
@@ -186,15 +185,11 @@ describe('/api/agent/stream route', () => {
         reader.releaseLock();
       }
 
-      // Parse the connection event to get actual timestamp
-      const connectionData = chunks[0].replace('data: ', '').replace('\n\n', '');
-      const connectionEvent = JSON.parse(connectionData);
-
-      // Verify exact stream format - connection event + all historical events (all have timestamp > 100)
+      // Verify exact stream format - connection event + filtered historical events (new SSE format)
       expect(chunks).toEqual([
-        `data: {"lastEventId":"100","sessionId":"test-session","timestamp":${connectionEvent.timestamp},"type":"connected"}\n\n`,
-        `data: {"type":"stream_start","timestamp":150,"sessionId":"test-session","data":{"messageId":"msg1"}}\n\n`,
-        `data: {"type":"stream_chunk","timestamp":250,"sessionId":"test-session","data":{"content":"world"}}\n\n`,
+        `id: conn_${MOCK_TIMESTAMP}\nevent: connected\ndata: {"lastEventId":"100","sessionId":"test-session","timestamp":${MOCK_TIMESTAMP},"type":"connected"}\n\n`,
+        `id: history_150_0\nevent: stream_start\ndata: {"type":"stream_start","timestamp":150,"sessionId":"test-session","data":{"messageId":"msg1"}}\n\n`,
+        `id: history_250_1\nevent: stream_chunk\ndata: {"type":"stream_chunk","timestamp":250,"sessionId":"test-session","data":{"content":"world"}}\n\n`,
       ]);
 
       // Verify API calls
@@ -272,15 +267,12 @@ describe('/api/agent/stream route', () => {
         reader.releaseLock();
       }
 
-      // Parse the connection event to get actual timestamp
-      const connectionData = chunks[0].replace('data: ', '').replace('\n\n', '');
-      const connectionEvent = JSON.parse(connectionData);
-
-      // Verify exact stream format - only events with timestamp > 200 are included
+      // Verify exact stream format - only events with timestamp > 200 are included (new SSE format)
+      // Note: indices are based on original array position, not filtered position
       expect(chunks).toEqual([
-        `data: {"lastEventId":"200","sessionId":"test-session","timestamp":${connectionEvent.timestamp},"type":"connected"}\n\n`,
-        `data: {"type":"stream_chunk","timestamp":250,"sessionId":"test-session","data":{"content":"world"}}\n\n`,
-        `data: {"type":"stream_end","timestamp":300,"sessionId":"test-session","data":{"messageId":"msg3"}}\n\n`,
+        `id: conn_${MOCK_TIMESTAMP}\nevent: connected\ndata: {"lastEventId":"200","sessionId":"test-session","timestamp":${MOCK_TIMESTAMP},"type":"connected"}\n\n`,
+        `id: history_250_2\nevent: stream_chunk\ndata: {"type":"stream_chunk","timestamp":250,"sessionId":"test-session","data":{"content":"world"}}\n\n`,
+        `id: history_300_3\nevent: stream_end\ndata: {"type":"stream_end","timestamp":300,"sessionId":"test-session","data":{"messageId":"msg3"}}\n\n`,
       ]);
 
       // Verify API calls
@@ -334,19 +326,19 @@ describe('/api/agent/stream route', () => {
         reader.releaseLock();
       }
 
-      // Parse the connection event to get actual timestamp
-      const connectionData = chunks[0].replace('data: ', '').replace('\n\n', '');
-      const connectionEvent = JSON.parse(connectionData);
+      // Verify exact stream format - connection event + error event (new SSE format)
+      // Parse error event to check format (error includes stack trace dynamically)
+      const errorChunk = chunks[1];
+      expect(errorChunk).toMatch(/^id: error_\d+\nevent: error\ndata: \{.*"type":"error".*\}\n\n$/);
+      expect(errorChunk).toContain('"error":"Redis connection failed"');
+      expect(errorChunk).toContain('"phase":"history_loading"');
+      expect(errorChunk).toContain('"sessionId":"test-session"');
+      expect(errorChunk).toContain(`"timestamp":${MOCK_TIMESTAMP}`);
 
-      // Parse the error event to get actual timestamp
-      const errorData = chunks[1].replace('data: ', '').replace('\n\n', '');
-      const errorEvent = JSON.parse(errorData);
-
-      // Verify exact stream format - connection event + error event
-      expect(chunks).toEqual([
-        `data: {"lastEventId":"0","sessionId":"test-session","timestamp":${connectionEvent.timestamp},"type":"connected"}\n\n`,
-        `data: {"data":{"error":"Redis connection failed","phase":"history_loading"},"sessionId":"test-session","timestamp":${errorEvent.timestamp},"type":"error"}\n\n`,
-      ]);
+      // Verify connection event format
+      expect(chunks[0]).toEqual(
+        `id: conn_${MOCK_TIMESTAMP}\nevent: connected\ndata: {"lastEventId":"0","sessionId":"test-session","timestamp":${MOCK_TIMESTAMP},"type":"connected"}\n\n`,
+      );
 
       // Verify getStreamHistory was called
       expect(mockStreamEventManager.getStreamHistory).toHaveBeenCalledWith('test-session', 50);
@@ -439,13 +431,9 @@ describe('/api/agent/stream route', () => {
         reader.releaseLock();
       }
 
-      // Parse the connection event to get actual timestamp
-      const connectionData = chunks[0].replace('data: ', '').replace('\n\n', '');
-      const connectionEvent = JSON.parse(connectionData);
-
-      // Verify exact stream format with default lastEventId
+      // Verify exact stream format with default lastEventId (new SSE format)
       expect(chunks).toEqual([
-        `data: {"lastEventId":"0","sessionId":"test-session","timestamp":${connectionEvent.timestamp},"type":"connected"}\n\n`,
+        `id: conn_${MOCK_TIMESTAMP}\nevent: connected\ndata: {"lastEventId":"0","sessionId":"test-session","timestamp":${MOCK_TIMESTAMP},"type":"connected"}\n\n`,
       ]);
     });
   });
