@@ -33,12 +33,14 @@ ${messages.map((m) => chatMessage(m)).join('\n')}
  * - Agent sees DMs they sent
  * - Agent sees user messages that are group messages or targeted to them
  * - For DM messages not involving the agent, content is replaced with "***"
+ * 
+ * TODO: Use context engineering to filter messages
  */
 export const filterMessagesForAgent = (messages: ChatMessage[], agentId: string): ChatMessage[] => {
   return messages
     .filter((message) => {
-      // Exclude supervisor messages (messages with agentId="supervisor")
-      if (message.agentId === 'supervisor') {
+      // Exclude supervisor messages (messages with role="supervisor")
+      if (message.role === 'supervisor') {
         return false;
       }
       return true;

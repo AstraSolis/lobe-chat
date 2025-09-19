@@ -323,7 +323,6 @@ export const chatAiGroupChat: StateCreator<
       internal_toggleSupervisorLoading,
       internal_updateSupervisorTodos,
       internal_createMessage,
-      internal_updateMessageContent,
       supervisorTodos,
       activeTopicId,
     } = get();
@@ -643,6 +642,7 @@ export const chatAiGroupChat: StateCreator<
         };
       });
 
+      // TODO: Use context engineering
       const messagesForAPI = [systemMessage, ...messagesWithAuthors, userMessage];
 
       if (assistantId) {

@@ -128,40 +128,30 @@ export class GroupChatSupervisor {
     } as const;
 
     try {
-      const response = await chatService.getStructuredCompletion<SupervisorToolCall[]>(
-        {
-          messages: [{ content: prompt, role: 'user' }],
-          response_format: responseFormat,
-          stream: false,
-          ...supervisorConfig,
-        },
-        {
-          signal: context.abortController?.signal,
-        },
-      );
+      // TODO: Replace with structured ouput @Arvin
+      return this.callLLMForDecisionWithStreaming(prompt, context, supervisorConfig);
 
-      return response;
+      // const response = await chatService.getStructuredCompletion<SupervisorToolCall[]>(
+      //   {
+      //     messages: [{ content: prompt, role: 'user' }],
+      //     response_format: responseFormat,
+      //     stream: false,
+      //     ...supervisorConfig,
+      //   },
+      //   {
+      //     signal: context.abortController?.signal,
+      //   },
+      // );
+
+      // return response;
     } catch (err) {
       if (this.isAbortError(err, context)) {
         throw this.createAbortError();
       }
 
-      // if (this.shouldFallbackToStreaming(err)) {
-      //   return this.callLLMForDecisionWithStreaming(prompt, context, supervisorConfig);
-      // }
-
       console.error('Supervisor LLM error:', err);
       throw err instanceof Error ? err : new Error(String(err));
     }
-  }
-
-  private shouldFallbackToStreaming(error: unknown) {
-    if (!error) return false;
-    if (error instanceof SyntaxError) return true;
-
-    const message = (error as Error)?.message || '';
-
-    return /unexpected token|invalid json|not valid json/i.test(message);
   }
 
   private createAbortError() {
@@ -249,8 +239,8 @@ export class GroupChatSupervisor {
         primaryError instanceof Error && primaryError.message === '__LEGACY_FORMAT__'
           ? 'legacy format detected'
           : primaryError instanceof Error
-          ? primaryError.message
-          : String(primaryError);
+            ? primaryError.message
+            : String(primaryError);
       const legacyMessage =
         legacyError instanceof Error ? legacyError.message : String(legacyError);
 
@@ -316,15 +306,16 @@ export class GroupChatSupervisor {
       typeof raw.tool_code === 'string'
         ? raw.tool_code
         : typeof raw.toolCode === 'string'
-        ? raw.toolCode
-        :
-      typeof raw.tool_name === 'string'
-        ? raw.tool_name
-        : typeof raw.toolName === 'string'
-        ? raw.toolName
-        : typeof raw.name === 'string'
-            ? raw.name
-            : functionCallName;
+          ? raw.toolCode
+          : typeof raw.tool_name === 'string'
+            ? raw.tool_name
+            : typeof raw.toolName === 'string'
+              ? raw.toolName
+              : typeof raw.tool === 'string'
+                ? raw.tool
+                : typeof raw.name === 'string'
+                  ? raw.name
+                  : functionCallName;
 
     if (!potentialName) return null;
 
@@ -398,10 +389,7 @@ export class GroupChatSupervisor {
 
   private applyCreateTodo(targetTodos: SupervisorTodoItem[], parameter: unknown): boolean {
     if (Array.isArray(parameter)) {
-      return parameter.reduce(
-        (acc, item) => this.applyCreateTodo(targetTodos, item) || acc,
-        false,
-      );
+      return parameter.reduce((acc, item) => this.applyCreateTodo(targetTodos, item) || acc, false);
     }
 
     const content = this.extractTodoContent(parameter);
@@ -445,10 +433,7 @@ export class GroupChatSupervisor {
 
   private applyFinishTodo(targetTodos: SupervisorTodoItem[], parameter: unknown): boolean {
     if (Array.isArray(parameter)) {
-      return parameter.reduce(
-        (acc, item) => this.applyFinishTodo(targetTodos, item) || acc,
-        false,
-      );
+      return parameter.reduce((acc, item) => this.applyFinishTodo(targetTodos, item) || acc, false);
     }
 
     if (parameter === false) return false;
@@ -588,10 +573,10 @@ export class GroupChatSupervisor {
       typeof payload.id === 'string'
         ? payload.id
         : typeof payload.agentId === 'string'
-        ? payload.agentId
-        : typeof payload.speaker === 'string'
-        ? payload.speaker
-        : undefined;
+          ? payload.agentId
+          : typeof payload.speaker === 'string'
+            ? payload.speaker
+            : undefined;
     if (!idValue) return null;
 
     const agentExists = availableAgents.some((agent) => agent.id === idValue);
@@ -601,8 +586,8 @@ export class GroupChatSupervisor {
       typeof payload.instruction === 'string'
         ? payload.instruction
         : typeof payload.message === 'string'
-        ? payload.message
-        : undefined;
+          ? payload.message
+          : undefined;
 
     const potentialTargets = [payload.target, payload.recipient, payload.to];
     let target: string | undefined;

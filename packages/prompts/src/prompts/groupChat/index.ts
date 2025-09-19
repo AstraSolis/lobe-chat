@@ -182,10 +182,6 @@ WHEN GENERATING TODOS:
 - Match user's language.
 - Keep todo items synchronized with the context. Finish or create todos as progress changes.
 
-EXAMPLES:
-
-${exampleArray}
-
 Now share your decision.
 `;
 
