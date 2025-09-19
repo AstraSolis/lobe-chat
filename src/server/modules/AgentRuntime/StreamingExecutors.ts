@@ -122,7 +122,6 @@ export function createStreamingLLMExecutor(ctx: StreamingExecutorContext): Instr
 
             await streamManager.publishStreamChunk(sessionId, stepIndex, {
               chunkType: 'tool_calls',
-              messageId: llmPayload.assistantMessageId || 'unknown',
               toolCalls: toolCalls,
             });
           }
@@ -388,7 +387,6 @@ export function createStreamingHumanApprovalExecutor(
     await streamManager.publishStreamChunk(sessionId, stepIndex, {
       // 使用 sessionId 作为 messageId
       chunkType: 'tool_calls',
-      messageId: ctx.sessionId,
       toolCalls: pendingToolsCalling,
     });
 

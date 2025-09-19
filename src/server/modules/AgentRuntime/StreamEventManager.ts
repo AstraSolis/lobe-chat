@@ -25,9 +25,7 @@ export interface StreamEvent {
 export interface StreamChunkData {
   chunkType: 'text' | 'reasoning' | 'tool_calls' | 'image' | 'grounding';
   content?: string;
-  fullContent?: string;
   images?: any[];
-  messageId: string;
   reasoning?: any;
   toolCalls?: any[];
 }
