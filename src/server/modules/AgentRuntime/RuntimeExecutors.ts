@@ -7,7 +7,7 @@ import { StreamEventManager } from './StreamEventManager';
 
 const log = debug('lobe-server:agent-runtime:streaming-executors');
 
-interface StreamingExecutorContext {
+interface RuntimeExecutorContext {
   fileService?: any;
   messageModel?: any;
   sessionId: string;
@@ -21,8 +21,9 @@ interface StreamingExecutorContext {
  * 创建流式 LLM 执行器
  * 集成 Agent Runtime 和流式事件发布
  */
-export function createStreamingLLMExecutor(ctx: StreamingExecutorContext): InstructionExecutor {
-  return async (instruction, state) => {
+export const createStreamingLLMExecutor =
+  (ctx: RuntimeExecutorContext): InstructionExecutor =>
+  async (instruction, state) => {
     const { payload } = instruction as Extract<AgentInstruction, { type: 'call_llm' }>;
     const { sessionId, stepIndex, streamManager } = ctx;
     const events: AgentEvent[] = [];
@@ -231,13 +232,13 @@ export function createStreamingLLMExecutor(ctx: StreamingExecutorContext): Instr
       throw error;
     }
   };
-}
 
 /**
  * 创建流式工具执行器
  */
-export function createStreamingToolExecutor(ctx: StreamingExecutorContext): InstructionExecutor {
-  return async (instruction, state) => {
+export const createToolExecutionExecutor =
+  (ctx: RuntimeExecutorContext): InstructionExecutor =>
+  async (instruction, state) => {
     const { toolCall } = instruction as Extract<AgentInstruction, { type: 'call_tool' }>;
     const { sessionId, stepIndex, streamManager } = ctx;
     const events: AgentEvent[] = [];
@@ -348,15 +349,13 @@ export function createStreamingToolExecutor(ctx: StreamingExecutorContext): Inst
       };
     }
   };
-}
 
 /**
  * 创建流式人工审批执行器
  */
-export function createStreamingHumanApprovalExecutor(
-  ctx: StreamingExecutorContext,
-): InstructionExecutor {
-  return async (instruction, state) => {
+export const createHumanApprovalExecutor =
+  (ctx: RuntimeExecutorContext): InstructionExecutor =>
+  async (instruction, state) => {
     const { pendingToolsCalling } = instruction as Extract<
       AgentInstruction,
       { type: 'request_human_approve' }
@@ -408,13 +407,13 @@ export function createStreamingHumanApprovalExecutor(
       // 不提供 nextContext，因为需要等待人工干预
     };
   };
-}
 
 /**
  * 创建流式完成执行器
  */
-export function createStreamingFinishExecutor(ctx: StreamingExecutorContext): InstructionExecutor {
-  return async (instruction, state) => {
+export const createExecutionFinishExecutor =
+  (ctx: RuntimeExecutorContext): InstructionExecutor =>
+  async (instruction, state) => {
     const { reason, reasonDetail } = instruction as Extract<AgentInstruction, { type: 'finish' }>;
     const { sessionId, stepIndex, streamManager } = ctx;
 
@@ -447,4 +446,3 @@ export function createStreamingFinishExecutor(ctx: StreamingExecutorContext): In
 
     return { events, newState };
   };
-}
