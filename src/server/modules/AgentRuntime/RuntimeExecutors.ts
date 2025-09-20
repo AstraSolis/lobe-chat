@@ -17,13 +17,14 @@ interface RuntimeExecutorContext {
   userPayload?: ClientSecretPayload;
 }
 
-/**
- * 创建流式 LLM 执行器
- * 集成 Agent Runtime 和流式事件发布
- */
-export const createStreamingLLMExecutor =
-  (ctx: RuntimeExecutorContext): InstructionExecutor =>
-  async (instruction, state) => {
+export const createRuntimeExecutors = (
+  ctx: RuntimeExecutorContext,
+): Partial<Record<AgentInstruction['type'], InstructionExecutor>> => ({
+  /**
+   * 创建流式 LLM 执行器
+   * 集成 Agent Runtime 和流式事件发布
+   */
+  call_llm: async (instruction, state) => {
     const { payload } = instruction as Extract<AgentInstruction, { type: 'call_llm' }>;
     const { sessionId, stepIndex, streamManager } = ctx;
     const events: AgentEvent[] = [];
@@ -231,14 +232,11 @@ export const createStreamingLLMExecutor =
       );
       throw error;
     }
-  };
-
-/**
- * 创建流式工具执行器
- */
-export const createToolExecutionExecutor =
-  (ctx: RuntimeExecutorContext): InstructionExecutor =>
-  async (instruction, state) => {
+  },
+  /**
+   * 工具执行
+   */
+  call_tool: async (instruction, state) => {
     const { toolCall } = instruction as Extract<AgentInstruction, { type: 'call_tool' }>;
     const { sessionId, stepIndex, streamManager } = ctx;
     const events: AgentEvent[] = [];
@@ -348,14 +346,48 @@ export const createToolExecutionExecutor =
         newState: state, // 状态不变
       };
     }
-  };
+  },
+  /**
+   * 完成 runtime 运行
+   */
+  finish: async (instruction, state) => {
+    const { reason, reasonDetail } = instruction as Extract<AgentInstruction, { type: 'finish' }>;
+    const { sessionId, stepIndex, streamManager } = ctx;
 
-/**
- * 创建流式人工审批执行器
- */
-export const createHumanApprovalExecutor =
-  (ctx: RuntimeExecutorContext): InstructionExecutor =>
-  async (instruction, state) => {
+    log('Finishing execution for session %s:%d (%s)', sessionId, stepIndex, reason);
+
+    // 发布执行完成事件
+    await streamManager.publishStreamEvent(sessionId, {
+      data: {
+        finalState: { ...state, status: 'done' },
+        phase: 'execution_complete',
+        reason,
+        reasonDetail,
+      },
+      stepIndex,
+      type: 'step_complete',
+    });
+
+    const newState = structuredClone(state);
+    newState.lastModified = new Date().toISOString();
+    newState.status = 'done';
+
+    const events: AgentEvent[] = [
+      {
+        finalState: newState,
+        reason,
+        reasonDetail,
+        type: 'done',
+      },
+    ];
+
+    return { events, newState };
+  },
+
+  /**
+   * 人工审批
+   */
+  request_human_approve: async (instruction, state) => {
     const { pendingToolsCalling } = instruction as Extract<
       AgentInstruction,
       { type: 'request_human_approve' }
@@ -406,43 +438,5 @@ export const createHumanApprovalExecutor =
       newState,
       // 不提供 nextContext，因为需要等待人工干预
     };
-  };
-
-/**
- * 创建流式完成执行器
- */
-export const createExecutionFinishExecutor =
-  (ctx: RuntimeExecutorContext): InstructionExecutor =>
-  async (instruction, state) => {
-    const { reason, reasonDetail } = instruction as Extract<AgentInstruction, { type: 'finish' }>;
-    const { sessionId, stepIndex, streamManager } = ctx;
-
-    log('Finishing execution for session %s:%d (%s)', sessionId, stepIndex, reason);
-
-    // 发布执行完成事件
-    await streamManager.publishStreamEvent(sessionId, {
-      data: {
-        finalState: { ...state, status: 'done' },
-        phase: 'execution_complete',
-        reason,
-        reasonDetail,
-      },
-      stepIndex,
-      type: 'step_complete',
-    });
-
-    const newState = structuredClone(state);
-    newState.lastModified = new Date().toISOString();
-    newState.status = 'done';
-
-    const events: AgentEvent[] = [
-      {
-        finalState: newState,
-        reason,
-        reasonDetail,
-        type: 'done',
-      },
-    ];
-
-    return { events, newState };
-  };
+  },
+});

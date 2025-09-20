@@ -5,11 +5,8 @@ import {
   AgentRuntimeCoordinator,
   ChatAgent,
   StreamEventManager,
-  createExecutionFinishExecutor,
-  createHumanApprovalExecutor,
-  createStreamingLLMExecutor,
-  createToolExecutionExecutor,
 } from '@/server/modules/AgentRuntime';
+import { createRuntimeExecutors } from '@/server/modules/AgentRuntime/RuntimeExecutors';
 import { QueueService } from '@/server/services/queue';
 
 import type {
@@ -554,12 +551,7 @@ export class AgentRuntimeService {
 
     // 创建 Agent Runtime 实例
     const runtime = new AgentRuntime(agent as any, {
-      executors: {
-        call_llm: createStreamingLLMExecutor(executorContext),
-        call_tool: createToolExecutionExecutor(executorContext),
-        finish: createExecutionFinishExecutor(executorContext),
-        request_human_approve: createHumanApprovalExecutor(executorContext),
-      },
+      executors: createRuntimeExecutors(executorContext),
     });
 
     return { agent, runtime };
