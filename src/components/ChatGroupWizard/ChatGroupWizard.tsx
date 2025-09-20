@@ -111,6 +111,7 @@ const useStyles = createStyles(({ css, token }) => ({
   container: css`
     display: flex;
     flex-direction: row;
+
     height: 500px;
     border: 1px solid ${token.colorBorderSecondary};
     border-radius: ${token.borderRadius}px;
@@ -121,9 +122,9 @@ const useStyles = createStyles(({ css, token }) => ({
     color: ${token.colorTextSecondary};
   `,
   hostCard: css`
+    padding: ${token.padding}px;
     border: 1px solid ${token.colorBorderSecondary};
     border-radius: ${token.borderRadiusLG}px;
-    padding: ${token.padding}px;
     background: ${token.colorFillTertiary};
   `,
   leftColumn: css`
@@ -134,11 +135,11 @@ const useStyles = createStyles(({ css, token }) => ({
 
     padding-block: ${token.paddingSM}px 0;
     padding-inline: ${token.paddingSM}px;
-    border-right: 1px solid ${token.colorBorderSecondary};
+    border-inline-end: 1px solid ${token.colorBorderSecondary};
   `,
   listHeader: css`
-    color: ${token.colorTextDescription};
     padding: 0;
+    color: ${token.colorTextDescription};
   `,
   listItem: css`
     cursor: pointer;
@@ -157,7 +158,7 @@ const useStyles = createStyles(({ css, token }) => ({
   `,
   memberDescription: css`
     display: block;
-    padding-right: 48px;
+    padding-inline-end: 48px;
   `,
   rightColumn: css`
     overflow-y: auto;
@@ -363,41 +364,44 @@ const ChatGroupWizard = memo<ChatGroupWizardProps>(
     }, [selectedTemplate, removedMembers, groupTemplates]);
 
     const selectedAgentListItems = useMemo(() => {
-      return selectedAgents
-        .map((agentId) => {
-          const agent = agentSessions.find((session) => session.config?.id === agentId);
-          if (!agent) return null;
+      return (
+        selectedAgents
+          .map((agentId) => {
+            const agent = agentSessions.find((session) => session.config?.id === agentId);
+            if (!agent) return null;
 
-          const title = agent.meta?.title || t('defaultSession', { ns: 'common' });
-          const avatar = agent.meta?.avatar || DEFAULT_AVATAR;
-          const avatarBackground = agent.meta?.backgroundColor;
-          const description = agent.meta?.description || '';
+            const title = agent.meta?.title || t('defaultSession', { ns: 'common' });
+            const avatar = agent.meta?.avatar || DEFAULT_AVATAR;
+            const avatarBackground = agent.meta?.backgroundColor;
+            const description = agent.meta?.description || '';
 
-          return {
-            actions: (
-              <ActionIcon
-                icon={X}
-                onClick={() => handleRemoveAgent(agentId)}
-                size="small"
-                style={{ color: '#999' }}
-              />
-            ),
-            avatar: (
-              <Avatar avatar={avatar} background={avatarBackground} shape="circle" size={40} />
-            ),
-            description: description ? (
-              <Tooltip title={description}>
-                <Text className={memberDescriptionClass} ellipsis={{ rows: 1 }}>
-                  {description}
-                </Text>
-              </Tooltip>
-            ) : null,
-            key: agentId,
-            showAction: true,
-            title,
-          };
-        })
-        .filter((item): item is NonNullable<typeof item> => Boolean(item));
+            return {
+              actions: (
+                <ActionIcon
+                  icon={X}
+                  onClick={() => handleRemoveAgent(agentId)}
+                  size="small"
+                  style={{ color: '#999' }}
+                />
+              ),
+              avatar: (
+                <Avatar avatar={avatar} background={avatarBackground} shape="circle" size={40} />
+              ),
+              description: description ? (
+                <Tooltip title={description}>
+                  <Text className={memberDescriptionClass} ellipsis={{ rows: 1 }}>
+                    {description}
+                  </Text>
+                </Tooltip>
+              ) : null,
+              key: agentId,
+              showAction: true,
+              title,
+            };
+          })
+          // eslint-disable-next-line unicorn/prefer-native-coercion-functions
+          .filter((item): item is NonNullable<typeof item> => Boolean(item))
+      );
     }, [selectedAgents, agentSessions, t, handleRemoveAgent, memberDescriptionClass]);
 
     const normalizedHostModelConfig = useMemo(() => {
@@ -495,8 +499,8 @@ const ChatGroupWizard = memo<ChatGroupWizardProps>(
             <Flexbox flex={1} style={{ overflowY: 'auto' }}>
               <Collapse
                 accordion
-                collapsible
                 activeKey={activePanel}
+                collapsible
                 expandIconPosition="end"
                 gap={12}
                 items={[
@@ -557,8 +561,8 @@ const ChatGroupWizard = memo<ChatGroupWizardProps>(
                     label: t('groupWizard.existingMembers'),
                   },
                 ]}
-                size="small"
                 onChange={handlePanelChange}
+                size="small"
                 styles={{
                   header: {
                     color: theme.colorTextDescription,
