@@ -3,13 +3,16 @@ import { ClientSecretPayload } from '@lobechat/types';
 import debug from 'debug';
 import OpenAI from 'openai';
 
+import { LOADING_FLAT } from '@/const/message';
+import { MessageModel } from '@/database/models/message';
+
 import { StreamEventManager } from './StreamEventManager';
 
 const log = debug('lobe-server:agent-runtime:streaming-executors');
 
-interface RuntimeExecutorContext {
+export interface RuntimeExecutorContext {
   fileService?: any;
-  messageModel?: any;
+  messageModel: MessageModel;
   sessionId: string;
   stepIndex: number;
   streamManager: StreamEventManager;
@@ -31,14 +34,26 @@ export const createRuntimeExecutors = (
 
     // 类型断言确保 payload 的正确性
     const llmPayload = payload as {
-      [key: string]: any;
       assistantMessageId?: string;
       messages: any[];
       model: string;
       provider: string;
+      sessionId: string;
+      topicId: string;
     };
 
     log('Starting LLM execution for session %s:%d', sessionId, stepIndex);
+
+    // create assistant message
+    const assistantMessageItem = await ctx.messageModel.create({
+      content: LOADING_FLAT,
+      fromModel: llmPayload.model,
+      fromProvider: llmPayload.provider,
+      // parentId: messageId,
+      role: 'assistant',
+      sessionId: llmPayload.sessionId,
+      topicId: llmPayload.topicId,
+    });
 
     // 发布流式开始事件
     await streamManager.publishStreamEvent(sessionId, {
@@ -86,15 +101,6 @@ export const createRuntimeExecutors = (
               chunkType: 'text',
               content: delta.content,
             });
-
-            // 实时更新数据库中的消息内容
-            // if (ctx.messageModel && llmPayload.assistantMessageId) {
-            //   try {
-            //     await ctx.messageModel.updateContent(llmPayload.assistantMessageId, content);
-            //   } catch (error) {
-            //     log('[StreamingLLMExecutor] Failed to update message content: %O', error);
-            //   }
-            // }
           }
 
           // 处理工具调用
@@ -137,7 +143,7 @@ export const createRuntimeExecutors = (
           });
         }
       } catch (streamError) {
-        log('[StreamingLLMExecutor] Stream processing error: %O', streamError);
+        console.error('[StreamingLLMExecutor] Stream processing error: %O', streamError);
         throw streamError;
       }
 
@@ -167,19 +173,14 @@ export const createRuntimeExecutors = (
       log('LLM execution completed for session %s:%d', sessionId, stepIndex);
 
       // 最终更新数据库
-      if (ctx.messageModel && llmPayload.assistantMessageId) {
-        try {
-          await ctx.messageModel.updateMessage(llmPayload.assistantMessageId, {
-            content,
-            imageList: imageList.length > 0 ? imageList : undefined,
-            reasoning: thinkingContent || undefined,
-            search: grounding,
-            status: 'completed',
-            toolCalls: toolCalls.length > 0 ? toolCalls : undefined,
-          });
-        } catch (error) {
-          log('[StreamingLLMExecutor] Failed to update final message: %O', error);
-        }
+      try {
+        await ctx.messageModel.update(assistantMessageItem.id, {
+          content,
+          search: grounding,
+          toolCalls: toolCalls.length > 0 ? toolCalls : undefined,
+        });
+      } catch (error) {
+        console.error('[StreamingLLMExecutor] Failed to update final message: %O', error);
       }
 
       // 更新 Agent 状态
