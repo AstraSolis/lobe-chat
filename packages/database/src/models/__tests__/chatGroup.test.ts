@@ -216,6 +216,7 @@ describe('ChatGroupModel', () => {
         config: {
           maxResponseInRow: 5,
           responseOrder: 'sequential',
+          scene: 'casual',
         },
       };
 
@@ -227,9 +228,9 @@ describe('ChatGroupModel', () => {
       expect(result.description).toBe('A test chat group');
       expect(result.pinned).toBe(true);
       expect(result.config).toEqual({
-        autoResponse: true,
-        maxAgents: 5,
+        maxResponseInRow: 5,
         responseOrder: 'sequential',
+        scene: 'casual',
       });
       expect(result.id.startsWith('cg_')).toBe(true);
     });

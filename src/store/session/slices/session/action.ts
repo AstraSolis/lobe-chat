@@ -8,6 +8,7 @@ import { StateCreator } from 'zustand/vanilla';
 import { message } from '@/components/AntdStaticMethods';
 import { MESSAGE_CANCEL_FLAT } from '@/const/message';
 import { DEFAULT_AGENT_LOBE_SESSION, INBOX_SESSION_ID } from '@/const/session';
+import { DEFAULT_CHAT_GROUP_CHAT_CONFIG } from '@/const/settings';
 import { useClientDataSWR } from '@/libs/swr';
 import { chatGroupService } from '@/services/chatGroup';
 import { sessionService } from '@/services/session';
@@ -271,6 +272,7 @@ export const createSessionSlice: StateCreator<
                 orchestratorProvider: 'openai',
                 responseOrder: 'sequential' as const,
                 responseSpeed: 'medium' as const,
+                scene: DEFAULT_CHAT_GROUP_CHAT_CONFIG.scene,
               },
               createdAt: session.createdAt,
               description: session.meta?.description || '',

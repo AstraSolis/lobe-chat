@@ -1,5 +1,6 @@
 import { z } from 'zod';
 
+import { DEFAULT_CHAT_GROUP_CHAT_CONFIG } from '@/const/settings';
 import { ChatGroupModel } from '@/database/models/chatGroup';
 import { insertChatGroupSchema } from '@/database/schemas/chatGroup';
 import { ChatGroupConfig } from '@/database/types/chatGroup';
@@ -15,6 +16,14 @@ const groupProcedure = authedProcedure.use(serverDatabase).use(async (opts) => {
     },
   });
 });
+
+const normalizeGroupConfig = (config?: ChatGroupConfig | null): ChatGroupConfig | undefined =>
+  config
+    ? {
+        ...DEFAULT_CHAT_GROUP_CHAT_CONFIG,
+        ...config,
+      }
+    : undefined;
 
 export const groupRouter = router({
   addAgentsToGroup: groupProcedure
@@ -33,7 +42,7 @@ export const groupRouter = router({
     .mutation(async ({ input, ctx }) => {
       return ctx.chatGroupModel.create({
         ...input,
-        config: input.config as ChatGroupConfig,
+        config: normalizeGroupConfig(input.config as ChatGroupConfig | null),
       });
     }),
 
@@ -96,7 +105,7 @@ export const groupRouter = router({
     .mutation(async ({ input, ctx }) => {
       return ctx.chatGroupModel.update(input.id, {
         ...input.value,
-        config: input.value.config as ChatGroupConfig,
+        config: normalizeGroupConfig(input.value.config as ChatGroupConfig | null),
       });
     }),
 });

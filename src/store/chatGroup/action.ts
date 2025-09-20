@@ -4,13 +4,13 @@ import { mutate } from 'swr';
 import { StateCreator } from 'zustand/vanilla';
 
 import { INBOX_SESSION_ID } from '@/const/session';
-import type { ChatGroupAgentItem, ChatGroupItem } from '@/database/schemas/chatGroup';
-import type { ChatStoreState } from '@/store/chat/initialState';
-import type { SupervisorTodoItem } from '@/store/chat/slices/message/supervisor';
-import { getChatStoreState, useChatStore } from '@/store/chat';
-import { messageMapKey } from '@/store/chat/utils/messageMapKey';
+import { DEFAULT_CHAT_GROUP_CHAT_CONFIG } from '@/const/settings';
+import type { ChatGroupItem } from '@/database/schemas/chatGroup';
 import { useClientDataSWR } from '@/libs/swr';
 import { chatGroupService } from '@/services/chatGroup';
+import { getChatStoreState, useChatStore } from '@/store/chat';
+import type { ChatStoreState } from '@/store/chat/initialState';
+import { messageMapKey } from '@/store/chat/utils/messageMapKey';
 import { getSessionStoreState } from '@/store/session';
 import { setNamespace } from '@/utils/storeDebug';
 
@@ -103,6 +103,45 @@ export const chatGroupAction: StateCreator<
 
     internal_dispatchChatGroup: dispatch,
 
+    internal_refreshGroups: async () => {
+      await get().loadGroups();
+
+      // Also rebuild and update groupMap to keep it in sync
+      const groups = await chatGroupService.getGroups();
+      const nextGroupMap = groups.reduce(
+        (map, group) => {
+          map[group.id] = group;
+          return map;
+        },
+        {} as Record<string, ChatGroupItem>,
+      );
+
+      if (!isEqual(get().groupMap, nextGroupMap)) {
+        set(
+          {
+            groupMap: nextGroupMap,
+            groupsInit: true,
+            isGroupsLoading: false,
+          },
+          false,
+          n('internal_refreshGroups/updateGroupMap'),
+        );
+      }
+
+      // Refresh sessions so session-related group info stays up to date
+      await getSessionStoreState().refreshSessions();
+    },
+
+    internal_updateGroupAgentMaps: (groupId, agents) => {
+      useChatStore.setState(
+        produce((state: ChatStoreState) => {
+          state.groupAgentMaps[groupId] = agents;
+        }),
+        false,
+        n(`internal_updateGroupAgentMaps/${groupId}`),
+      );
+    },
+
     internal_updateGroupMaps: (groups) => {
       const nextGroupMap = groups.reduce(
         (map, group) => {
@@ -134,16 +173,6 @@ export const chatGroupAction: StateCreator<
       }
     },
 
-    internal_updateGroupAgentMaps: (groupId, agents) => {
-      useChatStore.setState(
-        produce((state: ChatStoreState) => {
-          state.groupAgentMaps[groupId] = agents;
-        }),
-        false,
-        n(`internal_updateGroupAgentMaps/${groupId}`),
-      );
-    },
-
     internal_updateSupervisorTodos: (groupId, topicId, todos) => {
       const key = messageMapKey(groupId, topicId);
       useChatStore.setState(
@@ -153,35 +182,6 @@ export const chatGroupAction: StateCreator<
         false,
         n(`internal_updateSupervisorTodos/${groupId}`),
       );
-    },
-
-    internal_refreshGroups: async () => {
-      await get().loadGroups();
-
-      // Also rebuild and update groupMap to keep it in sync
-      const groups = await chatGroupService.getGroups();
-      const nextGroupMap = groups.reduce(
-        (map, group) => {
-          map[group.id] = group;
-          return map;
-        },
-        {} as Record<string, ChatGroupItem>,
-      );
-
-      if (!isEqual(get().groupMap, nextGroupMap)) {
-        set(
-          {
-            groupMap: nextGroupMap,
-            groupsInit: true,
-            isGroupsLoading: false,
-          },
-          false,
-          n('internal_refreshGroups/updateGroupMap'),
-        );
-      }
-
-      // Refresh sessions so session-related group info stays up to date
-      await getSessionStoreState().refreshSessions();
     },
 
     loadGroups: async () => {
@@ -239,7 +239,11 @@ export const chatGroupAction: StateCreator<
       const group = chatGroupSelectors.currentGroup(get());
       if (!group) return;
 
-      const mergedConfig = { ...group.config, ...config };
+      const mergedConfig = {
+        ...DEFAULT_CHAT_GROUP_CHAT_CONFIG,
+        ...group.config,
+        ...config,
+      };
       await chatGroupService.updateGroup(group.id, { config: mergedConfig });
       dispatch({ payload: { config: mergedConfig, id: group.id }, type: 'updateGroup' });
       await get().internal_refreshGroups();

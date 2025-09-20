@@ -7,13 +7,13 @@ export type ChatResponseFormat =
   | {
       json_schema: {
         /**
-         * JSON schema definition used for validation.
-         */
-        schema: Record<string, any>;
-        /**
          * Schema identifier required by OpenAI.
          */
         name: string;
+        /**
+         * JSON schema definition used for validation.
+         */
+        schema: Record<string, any>;
         /**
          * Enforce strict schema validation when true.
          */
@@ -86,7 +86,6 @@ export interface ChatStreamPayload {
    * @title 返回的文本数量
    */
   n?: number;
-  response_format?: ChatResponseFormat;
   /**
    * 开启的插件列表
    */
@@ -100,6 +99,8 @@ export interface ChatStreamPayload {
    * @default openai
    */
   provider?: string;
+  responseMode?: 'stream' | 'json';
+  response_format?: ChatResponseFormat;
   /**
    * @title 是否开启流式请求
    * @default true

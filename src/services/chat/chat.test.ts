@@ -1,6 +1,6 @@
 import { LobeChatPluginManifest } from '@lobehub/chat-plugin-sdk';
 import { act } from '@testing-library/react';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { type Mock, afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { DEFAULT_USER_AVATAR } from '@/const/meta';
 import { DEFAULT_AGENT_CONFIG } from '@/const/settings';
@@ -15,8 +15,8 @@ import { ChatImageItem, ChatMessage } from '@/types/message';
 import { ChatStreamPayload, type OpenAIChatMessage } from '@/types/openai/chat';
 import { LobeTool } from '@/types/tool';
 
-import * as helpers from './helper';
 import { API_ENDPOINTS } from '../_url';
+import * as helpers from './helper';
 import { chatService } from './index';
 
 // Mocking external dependencies
@@ -976,18 +976,12 @@ describe('ChatService', () => {
   });
 
   describe('getStructuredCompletion', () => {
-    let enableFetchSpy: ReturnType<typeof vi.spyOn>;
-
     beforeEach(() => {
-      enableFetchSpy = vi.spyOn(helpers, 'isEnableFetchOnClient').mockReturnValue(false);
-    });
-
-    afterEach(() => {
-      enableFetchSpy.mockRestore();
+      vi.spyOn(helpers, 'isEnableFetchOnClient').mockReturnValue(false);
     });
 
     it('should post structured payload without tools or streaming and return parsed data', async () => {
-      const mockFetch = fetch as unknown as vi.Mock;
+      const mockFetch = fetch as unknown as Mock;
       mockFetch.mockClear();
 
       const mockResponse = { result: { foo: 'bar' } };
@@ -1034,7 +1028,7 @@ describe('ChatService', () => {
     });
 
     it('should invoke onErrorHandle when request throws', async () => {
-      const mockFetch = fetch as unknown as vi.Mock;
+      const mockFetch = fetch as unknown as Mock;
       mockFetch.mockClear();
 
       const networkError = new Error('network failed');

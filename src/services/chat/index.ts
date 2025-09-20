@@ -26,7 +26,7 @@ import {
 import { WebBrowsingManifest } from '@/tools/web-browsing';
 import { WorkingModel } from '@/types/agent';
 import { ChatMessage } from '@/types/message';
-import type { ChatStreamPayload } from '@/types/openai/chat';
+import type { ChatStreamPayload, OpenAIChatMessage } from '@/types/openai/chat';
 import {
   fetchWithDesktopRemoteRPC,
   fetchWithInvokeStream,
@@ -51,6 +51,10 @@ interface GetChatCompletionPayload extends Partial<Omit<ChatStreamPayload, 'mess
   messages: ChatMessage[];
 }
 
+type ChatStreamInputParams = Partial<Omit<ChatStreamPayload, 'messages'>> & {
+  messages?: (ChatMessage | OpenAIChatMessage)[];
+};
+
 interface FetchAITaskResultParams extends FetchSSEOptions {
   abortController?: AbortController;
   onError?: (e: Error, rawError?: any) => void;
@@ -62,7 +66,7 @@ interface FetchAITaskResultParams extends FetchSSEOptions {
   /**
    * 请求对象
    */
-  params: Partial<ChatStreamPayload>;
+  params: ChatStreamInputParams;
   trace?: TracePayload;
 }
 
@@ -546,12 +550,20 @@ class ChatService {
     onLoadingChange?.(true);
 
     try {
-      const oaiMessages = await contextEngineering({
-        messages: params.messages as any,
-        model: params.model!,
-        provider: params.provider!,
-        tools: params.plugins,
-      });
+      const rawMessages = params.messages ?? [];
+
+      const isChatMessageArray = rawMessages.every(
+        (message): message is ChatMessage => 'createdAt' in message && 'updatedAt' in message,
+      );
+
+      const oaiMessages = isChatMessageArray
+        ? await contextEngineering({
+            messages: rawMessages,
+            model: params.model!,
+            provider: params.provider!,
+            tools: params.plugins,
+          })
+        : (rawMessages as OpenAIChatMessage[]);
       const tools = this.prepareTools(params.plugins || [], {
         model: params.model!,
         provider: params.provider!,

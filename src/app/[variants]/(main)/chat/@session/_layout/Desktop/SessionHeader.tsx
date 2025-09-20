@@ -11,6 +11,7 @@ import { ProductLogo } from '@/components/Branding';
 import { ChatGroupWizard } from '@/components/ChatGroupWizard';
 import { useGroupTemplates } from '@/components/ChatGroupWizard/templates';
 import { DESKTOP_HEADER_ICON_SIZE } from '@/const/layoutTokens';
+import { DEFAULT_CHAT_GROUP_CHAT_CONFIG } from '@/const/settings';
 import { useActionSWR } from '@/libs/swr';
 import { useChatGroupStore } from '@/store/chatGroup';
 import { featureFlagsSelectors, useServerConfigStore } from '@/store/serverConfig';
@@ -124,6 +125,7 @@ const Header = memo(() => {
                 }
               : {}),
             enableSupervisor: enableSupervisor ?? true,
+            scene: DEFAULT_CHAT_GROUP_CHAT_CONFIG.scene,
           },
           title: template.title,
         },
@@ -169,6 +171,7 @@ const Header = memo(() => {
                 }
               : {}),
             enableSupervisor: enableSupervisor ?? true,
+            scene: DEFAULT_CHAT_GROUP_CHAT_CONFIG.scene,
           },
           title: t('defaultGroupChat'),
         },
