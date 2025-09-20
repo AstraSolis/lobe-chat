@@ -1,12 +1,17 @@
 import { AgentRuntime } from '@lobechat/agent-runtime';
 import debug from 'debug';
 
+import { getServerDB } from '@/database/core/db-adaptor';
+import { MessageModel } from '@/database/models/message';
 import {
   AgentRuntimeCoordinator,
   ChatAgent,
   StreamEventManager,
 } from '@/server/modules/AgentRuntime';
-import { createRuntimeExecutors } from '@/server/modules/AgentRuntime/RuntimeExecutors';
+import {
+  RuntimeExecutorContext,
+  createRuntimeExecutors,
+} from '@/server/modules/AgentRuntime/RuntimeExecutors';
 import { QueueService } from '@/server/services/queue';
 
 import type {
@@ -135,7 +140,7 @@ export class AgentRuntimeService {
       }
 
       // 创建 Agent 和 Runtime 实例
-      const { runtime } = this.createAgentRuntime(sessionId, sessionMetadata);
+      const { runtime } = await this.createAgentRuntime(sessionId, sessionMetadata);
 
       // 处理人工干预
       let currentContext = context;
@@ -532,7 +537,7 @@ export class AgentRuntimeService {
   /**
    * 创建 Agent Runtime 实例
    */
-  private createAgentRuntime(sessionId: string, sessionMetadata?: any) {
+  private async createAgentRuntime(sessionId: string, sessionMetadata?: any) {
     // 创建 Durable Agent 实例
     const agent = new ChatAgent({
       agentConfig: sessionMetadata?.agentConfig,
@@ -541,10 +546,15 @@ export class AgentRuntimeService {
       userId: sessionMetadata?.userId,
     });
 
+    const serverDB = await getServerDB();
+
     // 创建流式执行器上下文
-    const executorContext = {
+    const executorContext: RuntimeExecutorContext = {
+      // TODO: need to settle model init
+      messageModel: new MessageModel(serverDB, 'github|28616219'),
       sessionId,
-      stepIndex: 0, // 会在执行时动态设置
+      stepIndex: 0,
+      // 会在执行时动态设置
       streamManager: this.streamManager,
       userId: sessionMetadata?.userId,
     };
