@@ -1,3 +1,6 @@
+import { fetchEventSource } from '@lobechat/utils/client';
+import debug from 'debug';
+
 import {
   AgentSessionRequest,
   AgentSessionResponse,
@@ -5,6 +8,8 @@ import {
   StreamConnectionOptions,
   StreamEvent,
 } from './type';
+
+const log = debug('lobe-agent-runtime:client');
 
 /**
  * Agent Client Service for communicating with durable agents
@@ -94,7 +99,10 @@ class AgentRuntimeClient {
   /**
    * Create a streaming connection to receive real-time agent events
    */
-  createStreamConnection(sessionId: string, options: StreamConnectionOptions = {}): EventSource {
+  createStreamConnection(
+    sessionId: string,
+    options: StreamConnectionOptions = {},
+  ): AbortController {
     const {
       includeHistory = false,
       lastEventId = '0',
@@ -110,95 +118,44 @@ class AgentRuntimeClient {
       sessionId,
     });
 
-    const eventSource = new EventSource(`${this.baseUrl}/stream?${params}`);
+    const controller = new AbortController();
 
-    eventSource.addEventListener('open', () => {
-      console.log(`[AgentClientService] Stream connection opened for session ${sessionId}`);
-      onConnect?.();
-    });
-
-    // eslint-disable-next-line unicorn/prefer-add-event-listener
-    eventSource.onmessage = (event) => {
-      try {
-        const data = JSON.parse(event.data) as StreamEvent;
-        onEvent?.(data);
-      } catch (error) {
-        console.error('[AgentClientService] Failed to parse stream event:', error);
-        onError?.(new Error('Failed to parse stream event'));
-      }
-    };
-
-    // eslint-disable-next-line unicorn/prefer-add-event-listener
-    eventSource.onerror = (event) => {
-      console.error(`[AgentClientService] Stream error for session ${sessionId}:`, event);
-
-      // EventSource automatically reconnects, but we can handle specific error types
-      if (eventSource.readyState === EventSource.CLOSED) {
-        console.log(`[AgentClientService] Stream connection closed for session ${sessionId}`);
-        onDisconnect?.();
-      } else {
-        onError?.(new Error('Stream connection error'));
-      }
-    };
-
-    // Custom cleanup method
-    const originalClose = eventSource.close.bind(eventSource);
-    eventSource.close = () => {
-      console.log(`[AgentClientService] Closing stream connection for session ${sessionId}`);
-      originalClose();
-      onDisconnect?.();
-    };
-
-    return eventSource;
-  }
-
-  /**
-   * Execute a single step manually (mainly for debugging)
-   */
-  async executeStep(
-    sessionId: string,
-    options: {
-      approvedToolCall?: any;
-      context?: any;
-      forceComplete?: boolean;
-      humanInput?: any;
-      priority?: 'low' | 'normal' | 'high';
-      rejectionReason?: string;
-      stepIndex?: number;
-    } = {},
-  ): Promise<any> {
-    const response = await fetch(`${this.baseUrl}/execute-step`, {
-      body: JSON.stringify({
-        sessionId,
-        ...options,
-      }),
+    fetchEventSource(`${this.baseUrl}/stream?${params}`, {
       headers: {
-        'Content-Type': 'application/json',
+        'Cache-Control': 'no-cache',
+        'Last-Event-ID': lastEventId,
       },
-      method: 'POST',
+      onclose: () => {
+        log(`Stream connection closed for session ${sessionId}`);
+        onDisconnect?.();
+      },
+      onerror: (error) => {
+        console.error(`[AgentClientService] Stream error for session ${sessionId}:`, error);
+        onError?.(error instanceof Error ? error : new Error('Stream connection error'));
+      },
+      onmessage: (event) => {
+        try {
+          const data = JSON.parse(event.data) as StreamEvent;
+          log(`Received event: ${event.event || 'message'}`, event.data);
+
+          onEvent?.(data);
+        } catch (error) {
+          console.error('[AgentClientService] Failed to parse stream event:', error);
+          onError?.(new Error('Failed to parse stream event'));
+        }
+      },
+      onopen: async (response) => {
+        if (response.ok) {
+          log(`Stream connection opened for session ${sessionId}`);
+          onConnect?.();
+        } else {
+          throw new Error(`Failed to open stream: ${response.status} ${response.statusText}`);
+        }
+      },
+      signal: controller.signal,
     });
 
-    if (!response.ok) {
-      const error = await response.json().catch(() => ({ error: 'Failed to execute step' }));
-      throw new Error(error.error || 'Failed to execute step');
-    }
-
-    return response.json();
-  }
-
-  /**
-   * Get service health status
-   */
-  async healthCheck(): Promise<any> {
-    const response = await fetch(`${this.baseUrl}/execute-step`, {
-      method: 'GET',
-    });
-
-    if (!response.ok) {
-      throw new Error('Health check failed');
-    }
-
-    return response.json();
+    return controller;
   }
 }
 

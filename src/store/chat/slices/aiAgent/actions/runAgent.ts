@@ -145,7 +145,11 @@ export const agentSlice: StateCreator<ChatStore, [['zustand/devtools', never]], 
 
         if (chunkType === 'text' && content) {
           // 更新文本内容
-          await get().internal_updateMessageContent(assistantId, content);
+          get().internal_dispatchMessage({
+            id: assistantId,
+            type: 'updateMessage',
+            value: { content },
+          });
         } else if (chunkType === 'tool_calls' && toolCalls) {
           // 更新工具调用
           log(`Updating tool calls for ${assistantId}:`, toolCalls);
