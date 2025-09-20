@@ -71,7 +71,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json(responseData);
   } catch (error: any) {
     const executionTime = Date.now() - startTime;
-    log('Error in execution: %O', error);
+    console.error('Error in execution: %O', error);
 
     return NextResponse.json(
       {
