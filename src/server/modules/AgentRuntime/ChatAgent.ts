@@ -1,13 +1,8 @@
 import debug from 'debug';
 
-const log = debug('lobe-server:agent-runtime:durable-agent');
+const log = debug('lobe-server:agent-runtime:chat-agent');
 
-/**
- * 最简单的 Durable Agent 实现
- * 目标：先跑通基本流程
- */
-
-export interface DurableAgentConfig {
+export interface ChatAgentConfig {
   agentConfig?: {
     [key: string]: any;
     maxSteps?: number;
@@ -20,10 +15,13 @@ export interface DurableAgentConfig {
   userId?: string;
 }
 
-export class DurableLobeChatAgent {
-  private config: DurableAgentConfig;
+/**
+ * 最简单的 对话 Agent 实现
+ */
+export class ChatAgent {
+  private config: ChatAgentConfig;
 
-  constructor(config: DurableAgentConfig) {
+  constructor(config: ChatAgentConfig) {
     this.config = config;
   }
 
@@ -69,19 +67,6 @@ export class DurableLobeChatAgent {
    * 空工具注册表
    */
   tools = {};
-
-  /**
-   * 简单的模型运行时 - 返回模拟响应
-   */
-  async *modelRuntime(payload: any) {
-    log('Model runtime called for %s/%s', payload.model, payload.provider);
-
-    // 模拟响应
-    yield {
-      content: 'Hello! This is a simple response from the durable agent.',
-      type: 'text',
-    };
-  }
 
   /**
    * 获取配置

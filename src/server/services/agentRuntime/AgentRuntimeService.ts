@@ -3,7 +3,7 @@ import debug from 'debug';
 
 import {
   AgentRuntimeCoordinator,
-  DurableLobeChatAgent,
+  ChatAgent,
   StreamEventManager,
   createStreamingFinishExecutor,
   createStreamingHumanApprovalExecutor,
@@ -537,7 +537,7 @@ export class AgentRuntimeService {
    */
   private createAgentRuntime(sessionId: string, sessionMetadata?: any) {
     // 创建 Durable Agent 实例
-    const agent = new DurableLobeChatAgent({
+    const agent = new ChatAgent({
       agentConfig: sessionMetadata?.agentConfig,
       modelRuntimeConfig: sessionMetadata?.modelRuntimeConfig,
       sessionId,
